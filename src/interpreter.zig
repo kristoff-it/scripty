@@ -186,7 +186,7 @@ pub const TestValue = union(Tag) {
     global: *TestContext,
     site: *TestContext.Site,
     page: *TestContext.Page,
-    string: types.String,
+    string: []const u8,
     bool: bool,
     int: usize,
     float: f64,
@@ -225,10 +225,12 @@ pub const TestValue = union(Tag) {
 
     pub fn builtinsFor(comptime tag: Tag) type {
         const StringBuiltins = struct {
-            pub fn len(str: types.String, gpa: std.mem.Allocator, args: []const TestValue) TestValue {
-                if (args.len != 0) return .{ .err = "'len' wants no arguments" };
-                return TestValue.from(gpa, str.bytes.len);
-            }
+            pub const len = struct {
+                pub fn call(str: []const u8, gpa: std.mem.Allocator, args: []const TestValue) !TestValue {
+                    if (args.len != 0) return .{ .err = "'len' wants no arguments" };
+                    return TestValue.from(gpa, str.len);
+                }
+            };
         };
         return switch (tag) {
             .string => StringBuiltins,
@@ -236,7 +238,7 @@ pub const TestValue = union(Tag) {
         };
     }
 
-    pub fn fromStringLiteral(bytes: types.String) TestValue {
+    pub fn fromStringLiteral(bytes: []const u8) TestValue {
         return .{ .string = bytes };
     }
 
@@ -256,7 +258,7 @@ pub const TestValue = union(Tag) {
             *TestContext => return .{ .global = value },
             *TestContext.Site => return .{ .site = value },
             *TestContext.Page => return .{ .page = value },
-            []const u8 => return .{ .string = .{ .bytes = value, .must_free = false } },
+            []const u8 => return .{ .string = value },
             usize => return .{ .int = value },
             else => @compileError("TODO: add support for " ++ @typeName(T)),
         }
@@ -310,15 +312,10 @@ test "basic" {
 
     const ex: TestInterpreter.Result = .{
         .loc = .{ .start = 0, .end = code.len },
-        .value = .{
-            .string = .{
-                .must_free = false,
-                .bytes = "Home",
-            },
-        },
+        .value = .{ .string = "Home" },
     };
 
-    errdefer log.debug("result = `{s}`\n", .{result.value.string.bytes});
+    errdefer log.debug("result = `{s}`\n", .{result.value.string});
 
     try std.testing.expectEqualDeep(ex, result);
 }
@@ -337,7 +334,7 @@ test "builtin" {
         .value = .{ .int = 4 },
     };
 
-    errdefer log.debug("result = `{s}`\n", .{result.value.string.bytes});
+    errdefer log.debug("result = `{s}`\n", .{result.value.string});
 
     try std.testing.expectEqualDeep(ex, result);
 }
