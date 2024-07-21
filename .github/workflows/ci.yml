@@ -1,7 +1,5 @@
-name: github pages
-
+name: CI
 on: push
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
