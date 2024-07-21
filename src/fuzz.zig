@@ -22,12 +22,35 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(gpa);
     defer std.process.argsFree(gpa, args);
 
-    if (args.len != 2) @panic("wrong number of arguments");
-    const src = args[1];
+    const src = switch (args.len) {
+        1 => try std.io.getStdIn().reader().readAllAlloc(
+            arena,
+            std.math.maxInt(u32),
+        ),
+        2 => args[1],
+        else => @panic("wrong number of arguments"),
+    };
+
     std.debug.print("Input: '{s}'\n", .{src});
 
     var t = ctx;
     var vm: Interpreter = .{};
     const result = try vm.run(arena, &t, src, .{});
     std.debug.print("Result:\n{any}\n", .{result});
+}
+
+test "afl++ fuzz cases" {
+    const cases: []const []const u8 = &.{
+        @embedFile("fuzz/cases/1-1.txt"),
+    };
+
+    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+    for (cases) |c| {
+        var t = ctx;
+        var vm: Interpreter = .{};
+        const result = try vm.run(arena, &t, c, .{});
+        std.debug.print("Result:\n{any}\n", .{result});
+    }
 }

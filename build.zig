@@ -14,17 +14,23 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-
-    // unit_tests.strip = true;
-
     const run_unit_tests = b.addRunArtifact(unit_tests);
+
+    const fuzz_unit_tests = b.addTest(.{
+        .root_source_file = b.path("src/fuzz.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    fuzz_unit_tests.root_module.addImport("scripty", scripty);
+    const run_fuzz_unit_tests = b.addRunArtifact(fuzz_unit_tests);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+    test_step.dependOn(&run_fuzz_unit_tests.step);
 
     const fuzz = b.step("fuzz", "Generate an executable for AFL++ (persistent mode) plus extra tooling");
     const scripty_fuzz = b.addExecutable(.{
-        .name = "scritpyfuzz",
+        .name = "scriptyfuzz",
         .root_source_file = b.path("src/fuzz.zig"),
         .target = target,
         .optimize = .Debug,

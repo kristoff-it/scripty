@@ -1,11 +1,16 @@
 .{
     .name = "scripty",
-    .version = "0.0.0",
+    .version = "0.1.0",
     .dependencies = .{
         .@"zig-afl-kit" = .{
-            .url = "git+https://github.com/kristoff-it/zig-afl-kit#c932c42401ce9e98efcce2cceb3a2a55d6d7772f",
-            .hash = "1220a87b3fda7b8531c5c22b8cc3c9197ff4b4a41de286091fcd7138065fc71d0313",
+            .url = "git+https://github.com/kristoff-it/zig-afl-kit#18fb6d594550011089fb89c843c199be756ae6db",
+            .hash = "1220a43c1567edce2699c3bd866d44f5c667463289ed40cc79116b34dd8c8d0e8375",
         },
     },
-    .paths = .{"."},
+    .paths = .{
+        "LICENSE",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
 }

@@ -103,7 +103,7 @@ pub fn VM(
             }) {
                 switch (node.tag) {
                     .syntax_error => {
-                        vm.stack.shrinkRetainingCapacity(0);
+                        vm.reset();
                         return .{
                             .loc = node.loc,
                             .value = .{ .err = "syntax error" },
@@ -181,15 +181,28 @@ pub fn VM(
 
                         const fn_name = src[call_loc.start..call_loc.end];
                         const args = stack_values[call_idx + 1 ..];
-                        std.debug.assert(call_idx > 0);
+                        // TODO: this is actually a parsing error
+                        // std.debug.assert(call_idx > 0);
+                        if (call_idx == 0) {
+                            vm.reset();
+                            return .{
+                                .loc = call_loc,
+                                .value = .{
+                                    .err = "cannot call a function directly from the global scope",
+                                },
+                            };
+                        }
+
+                        // Remove arguments and fn_name
+                        vm.stack.shrinkRetainingCapacity(call_idx);
+
+                        // center on the old value
                         call_idx -= 1;
                         const old_value = stack_values[call_idx];
 
-                        // dearm location as a call
-                        stack_locs[call_idx].end += 1;
-
-                        // Remove arguments and fn_name
-                        vm.stack.shrinkRetainingCapacity(call_idx + 1);
+                        // disarm location as a call
+                        stack_locs[call_idx].start = call_loc.start;
+                        stack_locs[call_idx].end = call_loc.end + 1;
 
                         const new_value = old_value.call(gpa, fn_name, args, &vm.ext) catch |err| switch (err) {
                             error.OutOfMemory => return error.OutOfMemory,
@@ -204,7 +217,7 @@ pub fn VM(
                             return .{ .loc = call_loc, .value = new_value };
                         }
 
-                        // functor becomes the new result
+                        // old value becomes the new result
                         stack_values[call_idx] = new_value;
                     },
                 }
@@ -400,7 +413,7 @@ test "builtin" {
     const result = try vm.run(arena.allocator(), &t, code, .{});
 
     const ex: TestInterpreter.Result = .{
-        .loc = .{ .start = 12, .end = 15 },
+        .loc = .{ .start = 12, .end = 16 },
         .value = .{ .int = 4 },
     };
 
@@ -432,7 +445,7 @@ test "interrupt" {
     errdefer log.debug("result = `{s}`\n", .{result.value.string});
 
     const ex: TestInterpreter.Result = .{
-        .loc = .{ .start = 12, .end = 15 },
+        .loc = .{ .start = 12, .end = 16 },
         .value = .{ .string = ext },
     };
     try std.testing.expectEqualDeep(ex, result);

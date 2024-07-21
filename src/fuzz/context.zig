@@ -1,7 +1,7 @@
 const std = @import("std");
 const scripty = @import("scripty");
 
-pub const Interpreter = scripty.VM(TestContext, TestValue, void);
+pub const Interpreter = scripty.VM(TestContext, TestValue, TestExtResource);
 pub const ctx: TestContext = .{
     .version = "v0",
     .page = .{
@@ -13,6 +13,7 @@ pub const ctx: TestContext = .{
     },
 };
 
+const TestExtResource = []const u8;
 const TestValue = union(Tag) {
     global: *TestContext,
     site: *TestContext.Site,
@@ -52,7 +53,7 @@ const TestValue = union(Tag) {
         }
     }
 
-    pub const call = scripty.defaultCall(TestValue, void);
+    pub const call = scripty.defaultCall(TestValue, TestExtResource);
 
     pub fn builtinsFor(comptime tag: Tag) type {
         const StringBuiltins = struct {
@@ -61,11 +62,26 @@ const TestValue = union(Tag) {
                     str: []const u8,
                     gpa: std.mem.Allocator,
                     args: []const TestValue,
-                    _: *void,
+                    _: *TestExtResource,
                 ) !TestValue {
                     if (args.len != 0) return .{ .err = "'len' wants no arguments" };
                     return TestValue.from(gpa, str.len);
                 }
+
+                pub const ext = struct {
+                    pub fn call(
+                        str: []const u8,
+                        gpa: std.mem.Allocator,
+                        args: []const TestValue,
+                        ext_descriptor: *TestExtResource,
+                    ) !TestValue {
+                        if (args.len != 0) return .{
+                            .err = "'ext' wants no arguments",
+                        };
+                        ext_descriptor.* = try gpa.dupe(u8, str);
+                        return error.WantResource;
+                    }
+                };
             };
         };
         return switch (tag) {

@@ -1,10 +1,10 @@
-const interpreter = @import("interpreter.zig");
+const vm = @import("vm.zig");
 const types = @import("types.zig");
 
-pub const VM = interpreter.VM;
+pub const VM = vm.VM;
 pub const defaultDot = types.defaultDot;
 pub const defaultCall = types.defaultCall;
 
 test {
-    _ = interpreter;
+    _ = vm;
 }
