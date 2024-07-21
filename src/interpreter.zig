@@ -9,20 +9,30 @@ pub const Diagnostics = struct {
     loc: Tokenizer.Token.Loc,
 };
 
-pub const RunError = error{ OutOfMemory, Quota };
+pub const RunError = error{ OutOfMemory, WantResource, Quota };
 
-pub fn ScriptyVM(comptime Context: type, comptime Value: type) type {
-    if (!@hasDecl(Value, "builtinsFor")) {
+pub fn VM(
+    comptime _Context: type,
+    comptime _Value: type,
+    comptime _ResourceDescriptor: type,
+) type {
+    if (!@hasDecl(_Value, "builtinsFor")) {
         @compileLog("Value type must specify builtinsFor");
     }
 
     return struct {
         parser: Parser = .{},
         stack: std.MultiArrayList(Result) = .{},
+        ext: ResourceDescriptor = undefined,
+        state: enum { ready, waiting, pending } = .ready,
 
         pub fn deinit(self: @This(), gpa: std.mem.Allocator) void {
             self.stack.deinit(gpa);
         }
+
+        pub const Context = _Context;
+        pub const Value = _Value;
+        pub const ResourceDescriptor = _ResourceDescriptor;
 
         pub const Result = struct {
             value: Value,
@@ -34,59 +44,90 @@ pub fn ScriptyVM(comptime Context: type, comptime Value: type) type {
             quota: usize = 0,
         };
 
+        const ScriptyVM = @This();
+
+        pub fn insertResource(vm: *ScriptyVM, v: Value) void {
+            std.debug.assert(vm.state == .waiting);
+            const stack_values = vm.stack.items(.value);
+            stack_values[stack_values.len - 1] = v;
+            vm.state = .pending;
+            vm.ext = undefined;
+        }
+
+        pub fn getResourceDescriptor(vm: *ScriptyVM) ResourceDescriptor {
+            std.debug.assert(vm.state == .waiting);
+            return vm.ext;
+        }
+
+        pub fn reset(vm: *ScriptyVM) void {
+            vm.stack.shrinkRetainingCapacity(0);
+            vm.state = .ready;
+            vm.parser = .{};
+            vm.ext = undefined;
+        }
+
         pub fn run(
-            self: *@This(),
+            vm: *ScriptyVM,
             gpa: std.mem.Allocator,
             ctx: *Context,
-            code: []const u8,
+            src: []const u8,
             opts: RunOptions,
         ) RunError!Result {
-            // TODO: temp hack
-            self.parser = .{};
-            var quota = opts.quota;
+            switch (vm.state) {
+                .ready => {},
+                .waiting => unreachable, // programming error
+                .pending => {
+                    const result = vm.stack.get(vm.stack.len - 1);
+                    if (result.value == .err) {
+                        vm.reset();
+                        return .{ .loc = result.loc, .value = result.value };
+                    }
+                },
+            }
 
             log.debug("scripty is running!", .{});
 
             // On error make the vm usable again.
             errdefer |err| switch (@as(RunError, err)) {
-                error.Quota => {},
-                else => self.stack.shrinkRetainingCapacity(0),
+                error.Quota, error.WantResource => {},
+                else => vm.reset(),
             };
 
+            var quota = opts.quota;
             if (opts.diag != null) @panic("TODO: implement diagnostics");
             if (quota == 1) return error.Quota;
 
-            while (self.parser.next(code)) |node| : ({
+            while (vm.parser.next(src)) |node| : ({
                 if (quota == 1) return error.Quota;
                 if (quota > 1) quota -= 1;
             }) {
                 switch (node.tag) {
                     .syntax_error => {
-                        self.stack.shrinkRetainingCapacity(0);
+                        vm.stack.shrinkRetainingCapacity(0);
                         return .{
                             .loc = node.loc,
                             .value = .{ .err = "syntax error" },
                         };
                     },
-                    .string => try self.stack.append(gpa, .{
-                        .value = Value.fromStringLiteral(try node.loc.unquote(gpa, code)),
+                    .string => try vm.stack.append(gpa, .{
+                        .value = Value.fromStringLiteral(try node.loc.unquote(gpa, src)),
                         .loc = node.loc,
                     }),
-                    .number => try self.stack.append(gpa, .{
-                        .value = Value.fromNumberLiteral(node.loc.src(code)),
+                    .number => try vm.stack.append(gpa, .{
+                        .value = Value.fromNumberLiteral(node.loc.src(src)),
                         .loc = node.loc,
                     }),
-                    .true => try self.stack.append(gpa, .{
+                    .true => try vm.stack.append(gpa, .{
                         .value = Value.fromBooleanLiteral(true),
                         .loc = node.loc,
                     }),
-                    .false => try self.stack.append(gpa, .{
+                    .false => try vm.stack.append(gpa, .{
                         .value = Value.fromBooleanLiteral(false),
                         .loc = node.loc,
                     }),
                     .call => {
-                        assert(@src(), code[node.loc.end] == '(');
-                        try self.stack.append(gpa, .{
+                        std.debug.assert(src[node.loc.end] == '(');
+                        try vm.stack.append(gpa, .{
                             .loc = node.loc,
                             .value = undefined,
                         });
@@ -97,13 +138,13 @@ pub fn ScriptyVM(comptime Context: type, comptime Value: type) type {
                         //     node.loc,
                         //     code[node.loc.start..node.loc.end],
                         // });
-                        const slice = self.stack.slice();
+                        const slice = vm.stack.slice();
                         const stack_locs = slice.items(.loc);
                         const stack_values = slice.items(.value);
-                        const global = code[node.loc.start] == '$';
+                        const global = src[node.loc.start] == '$';
                         const start = node.loc.start + @intFromBool(global);
                         const end = node.loc.end;
-                        const path = code[start..end];
+                        const path = src[start..end];
 
                         const old_value = if (global)
                             Value.from(gpa, ctx)
@@ -112,11 +153,11 @@ pub fn ScriptyVM(comptime Context: type, comptime Value: type) type {
 
                         const new_value = try dotPath(gpa, old_value, path);
                         if (new_value == .err) {
-                            self.stack.shrinkRetainingCapacity(0);
+                            vm.reset();
                             return .{ .loc = node.loc, .value = new_value };
                         }
                         if (global) {
-                            try self.stack.append(gpa, .{
+                            try vm.stack.append(gpa, .{
                                 .loc = node.loc,
                                 .value = new_value,
                             });
@@ -126,46 +167,53 @@ pub fn ScriptyVM(comptime Context: type, comptime Value: type) type {
                         }
                     },
                     .apply => {
-                        const slice = self.stack.slice();
+                        const slice = vm.stack.slice();
                         const stack_locs = slice.items(.loc);
                         const stack_values = slice.items(.value);
 
                         var call_idx = stack_locs.len - 1;
                         const call_loc = while (true) : (call_idx -= 1) {
                             const current = stack_locs[call_idx];
-                            if (code[current.end] == '(') {
+                            if (src[current.end] == '(') {
                                 break current;
                             }
                         };
 
-                        const fn_name = code[call_loc.start..call_loc.end];
+                        const fn_name = src[call_loc.start..call_loc.end];
                         const args = stack_values[call_idx + 1 ..];
-                        assert(@src(), call_idx > 0);
+                        std.debug.assert(call_idx > 0);
                         call_idx -= 1;
                         const old_value = stack_values[call_idx];
-                        const new_value = try old_value.call(gpa, fn_name, args);
+
+                        // dearm location as a call
+                        stack_locs[call_idx].end += 1;
+
+                        // Remove arguments and fn_name
+                        vm.stack.shrinkRetainingCapacity(call_idx + 1);
+
+                        const new_value = old_value.call(gpa, fn_name, args, &vm.ext) catch |err| switch (err) {
+                            error.OutOfMemory => return error.OutOfMemory,
+                            error.WantResource => {
+                                vm.state = .waiting;
+                                return error.WantResource;
+                            },
+                        };
 
                         if (new_value == .err) {
-                            self.stack.shrinkRetainingCapacity(0);
-                            return .{ .loc = node.loc, .value = new_value };
+                            vm.reset();
+                            return .{ .loc = call_loc, .value = new_value };
                         }
 
                         // functor becomes the new result
                         stack_values[call_idx] = new_value;
-
-                        // Extend the loc to encompass the entire expression
-                        // (which also disables the value as a call path)
-                        stack_locs[call_idx].end = node.loc.end;
-
-                        // Remove arguments and fn_name
-                        self.stack.shrinkRetainingCapacity(call_idx + 1);
                     },
                 }
             }
 
-            assert(@src(), self.stack.items(.loc).len == 1);
-            const result = self.stack.pop();
-            assert(@src(), result.value != .err);
+            std.debug.assert(vm.stack.items(.loc).len == 1);
+            const result = vm.stack.pop();
+            std.debug.assert(result.value != .err);
+            vm.reset();
             return result;
         }
 
@@ -182,6 +230,7 @@ pub fn ScriptyVM(comptime Context: type, comptime Value: type) type {
     };
 }
 
+const TestExtResource = []const u8;
 pub const TestValue = union(Tag) {
     global: *TestContext,
     site: *TestContext.Site,
@@ -221,14 +270,35 @@ pub const TestValue = union(Tag) {
         }
     }
 
-    pub const call = types.defaultCall(TestValue);
+    pub const call = types.defaultCall(TestValue, TestExtResource);
 
     pub fn builtinsFor(comptime tag: Tag) type {
         const StringBuiltins = struct {
             pub const len = struct {
-                pub fn call(str: []const u8, gpa: std.mem.Allocator, args: []const TestValue) !TestValue {
-                    if (args.len != 0) return .{ .err = "'len' wants no arguments" };
+                pub fn call(
+                    str: []const u8,
+                    gpa: std.mem.Allocator,
+                    args: []const TestValue,
+                    _: *TestExtResource,
+                ) !TestValue {
+                    if (args.len != 0) return .{
+                        .err = "'len' wants no arguments",
+                    };
                     return TestValue.from(gpa, str.len);
+                }
+            };
+            pub const ext = struct {
+                pub fn call(
+                    str: []const u8,
+                    gpa: std.mem.Allocator,
+                    args: []const TestValue,
+                    ext_descriptor: *TestExtResource,
+                ) !TestValue {
+                    if (args.len != 0) return .{
+                        .err = "'ext' wants no arguments",
+                    };
+                    ext_descriptor.* = try gpa.dupe(u8, str);
+                    return error.WantResource;
                 }
             };
         };
@@ -299,7 +369,7 @@ const test_ctx: TestContext = .{
     },
 };
 
-const TestInterpreter = ScriptyVM(TestContext, TestValue);
+const TestInterpreter = VM(TestContext, TestValue, TestExtResource);
 
 test "basic" {
     const code = "$page.title";
@@ -330,7 +400,7 @@ test "builtin" {
     const result = try vm.run(arena.allocator(), &t, code, .{});
 
     const ex: TestInterpreter.Result = .{
-        .loc = .{ .start = 0, .end = code.len },
+        .loc = .{ .start = 12, .end = 15 },
         .value = .{ .int = 4 },
     };
 
@@ -338,14 +408,32 @@ test "builtin" {
 
     try std.testing.expectEqualDeep(ex, result);
 }
-fn assert(loc: std.builtin.SourceLocation, condition: bool) void {
-    if (!condition) {
-        std.debug.print("assertion error in {s} at {s}:{}:{}\n", .{
-            loc.fn_name,
-            loc.file,
-            loc.line,
-            loc.column,
-        });
-        std.process.exit(1);
-    }
+
+test "interrupt" {
+    const code = "$page.title.ext()";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var t = test_ctx;
+    var vm: TestInterpreter = .{};
+    try std.testing.expectError(
+        error.WantResource,
+        vm.run(arena.allocator(), &t, code, .{}),
+    );
+
+    const descriptor = vm.getResourceDescriptor();
+    try std.testing.expectEqualStrings(descriptor, "Home");
+
+    const ext = "banana";
+    vm.insertResource(.{ .string = ext });
+
+    const result = try vm.run(arena.allocator(), &t, code, .{});
+
+    errdefer log.debug("result = `{s}`\n", .{result.value.string});
+
+    const ex: TestInterpreter.Result = .{
+        .loc = .{ .start = 12, .end = 15 },
+        .value = .{ .string = ext },
+    };
+    try std.testing.expectEqualDeep(ex, result);
 }

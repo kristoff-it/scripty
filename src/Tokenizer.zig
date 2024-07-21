@@ -2,15 +2,15 @@ const Tokenizer = @This();
 
 const std = @import("std");
 
-idx: usize = 0,
+idx: u32 = 0,
 
 pub const Token = struct {
     tag: Tag,
     loc: Loc,
 
     pub const Loc = struct {
-        start: usize,
-        end: usize,
+        start: u32,
+        end: u32,
 
         pub fn src(self: Loc, code: []const u8) []const u8 {
             return code[self.start..self.end];

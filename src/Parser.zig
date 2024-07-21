@@ -5,8 +5,8 @@ const Tokenizer = @import("Tokenizer.zig");
 
 it: Tokenizer = .{},
 state: State = .start,
-call_depth: usize = 0, // 0 = not in a call
-last_path_end: usize = 0, // used for call
+call_depth: u32 = 0, // 0 = not in a call
+last_path_end: u32 = 0, // used for call
 
 const State = enum {
     start,
@@ -44,7 +44,7 @@ pub fn next(self: *Parser, code: []const u8) ?Node {
         .loc = undefined,
     };
 
-    var path_segments: usize = 0;
+    var path_segments: u32 = 0;
 
     while (self.it.next(code)) |tok| switch (self.state) {
         .syntax => unreachable,
@@ -223,16 +223,17 @@ pub fn next(self: *Parser, code: []const u8) ?Node {
     const not_good_state = (self.state != .after_call and
         self.state != .extend_path);
 
+    const code_len: u32 = @intCast(code.len);
     if (self.call_depth > 0 or not_good_state) {
         self.state = .syntax;
         return .{
             .tag = .syntax_error,
-            .loc = .{ .start = code.len - 1, .end = code.len },
+            .loc = .{ .start = code_len - 1, .end = code_len },
         };
     }
 
     if (path_segments == 0) return null;
-    path.loc.end = code.len;
+    path.loc.end = code_len;
     return path;
 }
 

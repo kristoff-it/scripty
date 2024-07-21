@@ -26,21 +26,34 @@ pub fn defaultDot(
 
 pub fn defaultCall(
     comptime Value: type,
-) fn (Value, std.mem.Allocator, []const u8, []const Value) error{OutOfMemory}!Value {
+    comptime ExternalResource: type,
+) fn (
+    Value,
+    std.mem.Allocator,
+    []const u8,
+    []const Value,
+    *ExternalResource,
+) error{ OutOfMemory, WantResource }!Value {
     return struct {
         pub fn call(
-            self: Value,
+            value: Value,
             gpa: std.mem.Allocator,
             fn_name: []const u8,
             args: []const Value,
-        ) error{OutOfMemory}!Value {
-            switch (self) {
+            ext: *ExternalResource,
+        ) error{ OutOfMemory, WantResource }!Value {
+            switch (value) {
                 inline else => |v, tag| {
                     const Builtin = Value.builtinsFor(tag);
                     inline for (@typeInfo(Builtin).Struct.decls) |decl| {
                         if (decl.name[0] == '_') continue;
                         if (std.mem.eql(u8, decl.name, fn_name)) {
-                            return @field(Builtin, decl.name).call(v, gpa, args);
+                            return @field(Builtin, decl.name).call(
+                                v,
+                                gpa,
+                                args,
+                                ext,
+                            );
                         }
                     }
 

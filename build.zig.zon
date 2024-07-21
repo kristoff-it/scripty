@@ -1,6 +1,10 @@
 .{
     .name = "scripty",
     .version = "0.0.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .@"zig-afl-kit" = .{
+            .path = "../zig-afl-kit",
+        },
+    },
     .paths = .{"."},
 }

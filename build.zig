@@ -1,4 +1,5 @@
 const std = @import("std");
+const afl = @import("zig-afl-kit");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -7,7 +8,6 @@ pub fn build(b: *std.Build) !void {
     const scripty = b.addModule("scripty", .{
         .root_source_file = b.path("src/root.zig"),
     });
-    _ = scripty;
 
     const unit_tests = b.addTest(.{
         .root_source_file = b.path("src/root.zig"),
@@ -21,4 +21,32 @@ pub fn build(b: *std.Build) !void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+
+    const fuzz = b.step("fuzz", "Generate an executable for AFL++ (persistent mode) plus extra tooling");
+    const scripty_fuzz = b.addExecutable(.{
+        .name = "scritpyfuzz",
+        .root_source_file = b.path("src/fuzz.zig"),
+        .target = target,
+        .optimize = .Debug,
+        .single_threaded = true,
+    });
+
+    scripty_fuzz.root_module.addImport("scripty", scripty);
+    fuzz.dependOn(&b.addInstallArtifact(scripty_fuzz, .{}).step);
+
+    const afl_obj = b.addObject(.{
+        .name = "scriptyfuzz-afl",
+        .root_source_file = b.path("src/fuzz/afl.zig"),
+        // .target = b.resolveTargetQuery(.{ .cpu_model = .baseline }),
+        .target = target,
+        .optimize = .Debug,
+        .single_threaded = true,
+    });
+
+    afl_obj.root_module.addImport("scripty", scripty);
+    afl_obj.root_module.stack_check = false; // not linking with compiler-rt
+    afl_obj.root_module.link_libc = true; // afl runtime depends on libc
+
+    const afl_fuzz = afl.addInstrumentedExe(b, afl_obj);
+    fuzz.dependOn(&b.addInstallBinFile(afl_fuzz, "scriptyfuzz-afl").step);
 }
