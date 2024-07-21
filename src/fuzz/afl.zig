@@ -16,9 +16,13 @@ var arena_impl: std.heap.ArenaAllocator = .{
     .child_allocator = undefined,
     .state = .{},
 };
-export fn zig_fuzz_test(buf: [*]u8, len: isize) void {
+
+export fn zig_fuzz_init() void {
     const gpa = gpa_impl.allocator();
     arena_impl.child_allocator = gpa;
+}
+
+export fn zig_fuzz_test(buf: [*]u8, len: isize) void {
     const arena = arena_impl.allocator();
     _ = arena_impl.reset(.retain_capacity);
 
