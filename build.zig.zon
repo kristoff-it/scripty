@@ -3,8 +3,8 @@
     .version = "0.1.0",
     .dependencies = .{
         .@"zig-afl-kit" = .{
-            .url = "git+https://github.com/kristoff-it/zig-afl-kit#18fb6d594550011089fb89c843c199be756ae6db",
-            .hash = "1220a43c1567edce2699c3bd866d44f5c667463289ed40cc79116b34dd8c8d0e8375",
+            .url = "git+https://github.com/kristoff-it/zig-afl-kit#bb540a464806b6d0aa7aa068a7e1ef6af4890216",
+            .hash = "12208af6d678bc0945cf3ca77e95e921ac14b7db698889671debfb552925f55ec8b4",
         },
     },
     .paths = .{
