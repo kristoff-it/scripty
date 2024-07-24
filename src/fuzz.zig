@@ -42,6 +42,7 @@ pub fn main() !void {
 test "afl++ fuzz cases" {
     const cases: []const []const u8 = &.{
         @embedFile("fuzz/cases/1-1.txt"),
+        @embedFile("fuzz/cases/2-1.txt"),
     };
 
     var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -50,6 +51,7 @@ test "afl++ fuzz cases" {
     for (cases) |c| {
         var t = ctx;
         var vm: Interpreter = .{};
+        std.debug.print("\n\ncase: '{s}'\n", .{c});
         const result = try vm.run(arena, &t, c, .{});
         std.debug.print("Result:\n{any}\n", .{result});
     }

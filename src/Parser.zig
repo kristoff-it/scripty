@@ -38,7 +38,7 @@ pub const Node = struct {
     };
 };
 
-pub fn next(self: *Parser, code: []const u8) ?Node {
+pub fn next(p: *Parser, code: []const u8) ?Node {
     var path: Node = .{
         .tag = .path,
         .loc = undefined,
@@ -46,41 +46,41 @@ pub fn next(self: *Parser, code: []const u8) ?Node {
 
     var path_segments: u32 = 0;
 
-    while (self.it.next(code)) |tok| switch (self.state) {
+    while (p.it.next(code)) |tok| switch (p.state) {
         .syntax => unreachable,
         .start => switch (tok.tag) {
             .dollar => {
-                self.state = .global;
+                p.state = .global;
                 path.loc = tok.loc;
             },
             else => {
-                self.state = .syntax;
+                p.state = .syntax;
                 return .{ .tag = .syntax_error, .loc = tok.loc };
             },
         },
         .global => switch (tok.tag) {
             .identifier => {
-                self.state = .extend_path;
+                p.state = .extend_path;
                 path_segments = 1;
                 path.loc.end = tok.loc.end;
             },
             else => {
-                self.state = .syntax;
+                p.state = .syntax;
                 return .{ .tag = .syntax_error, .loc = tok.loc };
             },
         },
         .extend_path => switch (tok.tag) {
             .dot => {
-                const id_tok = self.it.next(code);
+                const id_tok = p.it.next(code);
                 if (id_tok == null or id_tok.?.tag != .identifier) {
-                    self.state = .syntax;
+                    p.state = .syntax;
                     return .{ .tag = .syntax_error, .loc = tok.loc };
                 }
 
                 if (path_segments == 0) {
                     path.loc = id_tok.?.loc;
                 } else {
-                    self.last_path_end = path.loc.end;
+                    p.last_path_end = path.loc.end;
                     path.loc.end = id_tok.?.loc.end;
                 }
 
@@ -88,52 +88,52 @@ pub fn next(self: *Parser, code: []const u8) ?Node {
             },
             .lparen => {
                 if (path_segments == 0) {
-                    self.state = .syntax;
+                    p.state = .syntax;
                     return .{ .tag = .syntax_error, .loc = tok.loc };
                 }
 
                 // roll back to get a a lparen
-                self.it.idx -= 1;
-                self.state = .call_begin;
+                p.it.idx -= 1;
+                p.state = .call_begin;
                 if (path_segments > 1) {
-                    path.loc.end = self.last_path_end;
+                    path.loc.end = p.last_path_end;
                     return path;
                 } else {
                     // self.last_path_end = path.loc.start - 1; // TODO: check tha this is correct
                 }
             },
             .rparen => {
-                self.state = .call_end;
+                p.state = .call_end;
                 // roll back to get a rparen token next
-                self.it.idx -= 1;
+                p.it.idx -= 1;
                 if (path_segments == 0) {
-                    self.state = .syntax;
+                    p.state = .syntax;
                     return .{ .tag = .syntax_error, .loc = tok.loc };
                 }
                 return path;
             },
             .comma => {
-                self.state = .call_arg;
-                if (path_segments == 0) {
-                    self.state = .syntax;
+                p.state = .call_arg;
+                if (p.call_depth == 0) {
+                    p.state = .syntax;
                     return .{ .tag = .syntax_error, .loc = tok.loc };
                 }
                 return path;
             },
             else => {
-                self.state = .syntax;
+                p.state = .syntax;
                 return .{ .tag = .syntax_error, .loc = tok.loc };
             },
         },
         .call_begin => {
-            self.call_depth += 1;
+            p.call_depth += 1;
             switch (tok.tag) {
                 .lparen => {
-                    self.state = .call_arg;
+                    p.state = .call_arg;
                     return .{
                         .tag = .call,
                         .loc = .{
-                            .start = self.last_path_end + 1,
+                            .start = p.last_path_end + 1,
                             .end = tok.loc.start,
                         },
                     };
@@ -143,89 +143,89 @@ pub fn next(self: *Parser, code: []const u8) ?Node {
         },
         .call_arg => switch (tok.tag) {
             .dollar => {
-                self.state = .global;
+                p.state = .global;
                 path.loc = tok.loc;
             },
 
             .rparen => {
                 // rollback to get a rparen next
-                self.it.idx -= 1;
-                self.state = .call_end;
+                p.it.idx -= 1;
+                p.state = .call_end;
             },
             .identifier => {
-                self.state = .extend_call;
+                p.state = .extend_call;
                 const src = tok.loc.src(code);
                 if (std.mem.eql(u8, "true", src)) {
                     return .{ .tag = .true, .loc = tok.loc };
                 } else if (std.mem.eql(u8, "false", src)) {
                     return .{ .tag = .false, .loc = tok.loc };
                 } else {
-                    self.state = .syntax;
+                    p.state = .syntax;
                     return .{ .tag = .syntax_error, .loc = tok.loc };
                 }
             },
             .string => {
-                self.state = .extend_call;
+                p.state = .extend_call;
                 return .{ .tag = .string, .loc = tok.loc };
             },
             .number => {
-                self.state = .extend_call;
+                p.state = .extend_call;
                 return .{ .tag = .number, .loc = tok.loc };
             },
             else => {
-                self.state = .syntax;
+                p.state = .syntax;
                 return .{ .tag = .syntax_error, .loc = tok.loc };
             },
         },
         .extend_call => switch (tok.tag) {
-            .comma => self.state = .call_arg,
+            .comma => p.state = .call_arg,
             .rparen => {
                 // rewind to get a .rparen next call
-                self.it.idx -= 1;
-                self.state = .call_end;
+                p.it.idx -= 1;
+                p.state = .call_end;
             },
             else => {
-                self.state = .syntax;
+                p.state = .syntax;
                 return .{ .tag = .syntax_error, .loc = tok.loc };
             },
         },
         .call_end => {
-            if (self.call_depth == 0) {
-                self.state = .syntax;
+            if (p.call_depth == 0) {
+                p.state = .syntax;
                 return .{ .tag = .syntax_error, .loc = tok.loc };
             }
-            self.call_depth -= 1;
-            self.state = .after_call;
+            p.call_depth -= 1;
+            p.state = .after_call;
             return .{ .tag = .apply, .loc = tok.loc };
         },
         .after_call => switch (tok.tag) {
             .dot => {
                 // rewind to get a .dot next
-                self.it.idx -= 1;
-                self.last_path_end = tok.loc.start;
-                self.state = .extend_path;
+                p.it.idx -= 1;
+                p.last_path_end = tok.loc.start;
+                p.state = .extend_path;
             },
             .comma => {
-                self.state = .call_arg;
+                p.state = .call_arg;
             },
             .rparen => {
                 // rewind to get a .rparen next
-                self.it.idx -= 1;
-                self.state = .call_end;
+                p.it.idx -= 1;
+                p.state = .call_end;
             },
             else => {
-                self.state = .syntax;
+                p.state = .syntax;
                 return .{ .tag = .syntax_error, .loc = tok.loc };
             },
         },
     };
 
-    const not_good_state = (self.state != .after_call and
-        self.state != .extend_path);
+    const not_good_state = (p.state != .after_call and
+        p.state != .extend_path);
 
     const code_len: u32 = @intCast(code.len);
-    if (self.call_depth > 0 or not_good_state) {
-        self.state = .syntax;
+    if (p.call_depth > 0 or not_good_state) {
+        p.state = .syntax;
         return .{
             .tag = .syntax_error,
             .loc = .{ .start = code_len - 1, .end = code_len },

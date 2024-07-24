@@ -126,6 +126,14 @@ pub fn VM(
                         .loc = node.loc,
                     }),
                     .call => {
+                        // std.debug.assert(vm.stack.len > 0);
+                        if (vm.stack.len == 0) {
+                            vm.reset();
+                            return .{
+                                .loc = node.loc,
+                                .value = .{ .err = "top-level builtin calls are not allowed" },
+                            };
+                        }
                         std.debug.assert(src[node.loc.end] == '(');
                         try vm.stack.append(gpa, .{
                             .loc = node.loc,
@@ -181,8 +189,7 @@ pub fn VM(
 
                         const fn_name = src[call_loc.start..call_loc.end];
                         const args = stack_values[call_idx + 1 ..];
-                        // TODO: this is actually a parsing error
-                        // std.debug.assert(call_idx > 0);
+                        // // TODO: this is actually a parsing error
                         if (call_idx == 0) {
                             vm.reset();
                             return .{
