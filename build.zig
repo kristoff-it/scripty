@@ -45,7 +45,7 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/fuzz/afl.zig"),
         // .target = b.resolveTargetQuery(.{ .cpu_model = .baseline }),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .Debug,
         .single_threaded = true,
     });
 

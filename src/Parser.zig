@@ -46,6 +46,8 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
 
     var path_segments: u32 = 0;
 
+    // if (p.call_depth == 1) @breakpoint();
+
     while (p.it.next(code)) |tok| switch (p.state) {
         .syntax => unreachable,
         .start => switch (tok.tag) {
@@ -87,12 +89,12 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 path_segments += 1;
             },
             .lparen => {
-                if (path_segments == 0) {
+                if (path_segments < 2) {
                     p.state = .syntax;
                     return .{ .tag = .syntax_error, .loc = tok.loc };
                 }
 
-                // roll back to get a a lparen
+                // rewind to get a a lparen
                 p.it.idx -= 1;
                 p.state = .call_begin;
                 if (path_segments > 1) {

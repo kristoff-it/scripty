@@ -138,6 +138,7 @@ pub fn VM(
                     }),
                     .call => {
                         // std.debug.assert(vm.stack.len > 0);
+                        // @breakpoint();
                         if (vm.stack.len == 0) {
                             vm.reset();
                             return .{
