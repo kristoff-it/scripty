@@ -11,20 +11,16 @@ const mem = std.mem;
 //     std.debug.assert(toggle_me == false);
 // }
 
-var gpa_impl: std.heap.GeneralPurposeAllocator(.{}) = .{};
-var arena_impl: std.heap.ArenaAllocator = .{
-    .child_allocator = undefined,
-    .state = .{},
-};
-
-export fn zig_fuzz_init() void {
-    const gpa = gpa_impl.allocator();
-    arena_impl.child_allocator = gpa;
-}
+export fn zig_fuzz_init() void {}
 
 export fn zig_fuzz_test(buf: [*]u8, len: isize) void {
+    var gpa_impl: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    defer std.debug.assert(gpa_impl.deinit() == .ok);
+
+    var arena_impl = std.heap.ArenaAllocator.init(gpa_impl.allocator());
+    defer arena_impl.deinit();
+
     const arena = arena_impl.allocator();
-    _ = arena_impl.reset(.retain_capacity);
 
     const src = buf[0..@intCast(len)];
     var t = ctx;
