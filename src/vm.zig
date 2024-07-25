@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const types = @import("types.zig");
 const Tokenizer = @import("Tokenizer.zig");
 const Parser = @import("Parser.zig");
@@ -35,9 +36,15 @@ pub fn VM(
         pub const ResourceDescriptor = _ResourceDescriptor;
 
         pub const Result = struct {
+            debug: if (builtin.mode == .Debug)
+                enum { unset, set }
+            else
+                enum { set } = .set,
             value: Value,
             loc: Tokenizer.Token.Loc,
         };
+
+        const unset = if (builtin.mode == .Debug) .unset else undefined;
 
         pub const RunOptions = struct {
             diag: ?*Diagnostics = null,
@@ -110,18 +117,22 @@ pub fn VM(
                         };
                     },
                     .string => try vm.stack.append(gpa, .{
+                        .debug = .set,
                         .value = Value.fromStringLiteral(try node.loc.unquote(gpa, src)),
                         .loc = node.loc,
                     }),
                     .number => try vm.stack.append(gpa, .{
+                        .debug = .set,
                         .value = Value.fromNumberLiteral(node.loc.src(src)),
                         .loc = node.loc,
                     }),
                     .true => try vm.stack.append(gpa, .{
+                        .debug = .set,
                         .value = Value.fromBooleanLiteral(true),
                         .loc = node.loc,
                     }),
                     .false => try vm.stack.append(gpa, .{
+                        .debug = .set,
                         .value = Value.fromBooleanLiteral(false),
                         .loc = node.loc,
                     }),
@@ -131,13 +142,16 @@ pub fn VM(
                             vm.reset();
                             return .{
                                 .loc = node.loc,
-                                .value = .{ .err = "top-level builtin calls are not allowed" },
+                                .value = .{
+                                    .err = "top-level builtin calls are not allowed",
+                                },
                             };
                         }
                         std.debug.assert(src[node.loc.end] == '(');
                         try vm.stack.append(gpa, .{
                             .loc = node.loc,
                             .value = undefined,
+                            .debug = unset,
                         });
                     },
 
@@ -156,8 +170,15 @@ pub fn VM(
 
                         const old_value = if (global)
                             Value.from(gpa, ctx)
-                        else
-                            stack_values[stack_values.len - 1];
+                        else blk: {
+                            if (builtin.mode == .Debug) {
+                                const stack_debug = slice.items(.debug);
+                                std.debug.assert(
+                                    stack_debug[stack_values.len - 1] == .set,
+                                );
+                            }
+                            break :blk stack_values[stack_values.len - 1];
+                        };
 
                         const new_value = try dotPath(gpa, old_value, path);
                         if (new_value == .err) {
@@ -168,10 +189,18 @@ pub fn VM(
                             try vm.stack.append(gpa, .{
                                 .loc = node.loc,
                                 .value = new_value,
+                                .debug = .set,
                             });
                         } else {
                             stack_locs[stack_locs.len - 1] = node.loc;
                             stack_values[stack_values.len - 1] = new_value;
+                            if (builtin.mode == .Debug) {
+                                const stack_debug = slice.items(.debug);
+                                std.debug.assert(
+                                    stack_debug[stack_values.len - 1] == .unset,
+                                );
+                                stack_debug[stack_values.len - 1] = .set;
+                            }
                         }
                     },
                     .apply => {
@@ -206,6 +235,12 @@ pub fn VM(
                         // center on the old value
                         call_idx -= 1;
                         const old_value = stack_values[call_idx];
+                        if (builtin.mode == .Debug) {
+                            const stack_debug = slice.items(.debug);
+                            std.debug.assert(
+                                stack_debug[call_idx] == .set,
+                            );
+                        }
 
                         // disarm location as a call
                         stack_locs[call_idx].start = call_loc.start;
@@ -226,6 +261,10 @@ pub fn VM(
 
                         // old value becomes the new result
                         stack_values[call_idx] = new_value;
+                        if (builtin.mode == .Debug) {
+                            const stack_debug = slice.items(.debug);
+                            stack_debug[call_idx] = .set;
+                        }
                     },
                 }
             }
