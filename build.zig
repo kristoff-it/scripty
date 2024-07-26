@@ -28,7 +28,10 @@ pub fn build(b: *std.Build) !void {
     test_step.dependOn(&run_unit_tests.step);
     test_step.dependOn(&run_fuzz_unit_tests.step);
 
-    const fuzz = b.step("fuzz", "Generate an executable for AFL++ (persistent mode) plus extra tooling");
+    if (b.option(bool, "fuzz", "Generate an executable for AFL++ (persistent mode) plus extra tooling") orelse false) {
+        return;
+    }
+
     const scripty_fuzz = b.addExecutable(.{
         .name = "scriptyfuzz",
         .root_source_file = b.path("src/fuzz.zig"),
@@ -38,7 +41,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     scripty_fuzz.root_module.addImport("scripty", scripty);
-    fuzz.dependOn(&b.addInstallArtifact(scripty_fuzz, .{}).step);
+    b.installArtifact(scripty_fuzz);
 
     const afl_obj = b.addObject(.{
         .name = "scriptyfuzz-afl",
@@ -46,7 +49,6 @@ pub fn build(b: *std.Build) !void {
         // .target = b.resolveTargetQuery(.{ .cpu_model = .baseline }),
         .target = target,
         .optimize = .Debug,
-        .single_threaded = true,
     });
 
     afl_obj.root_module.addImport("scripty", scripty);
@@ -55,6 +57,8 @@ pub fn build(b: *std.Build) !void {
     // afl_obj.root_module.fuzz = true;
 
     const afl_fuzz = afl.addInstrumentedExe(b, target, optimize, afl_obj);
-    fuzz.dependOn(&b.addInstallBinFile(afl_fuzz, "scriptyfuzz-afl").step);
+    b.getInstallStep().dependOn(
+        &b.addInstallBinFile(afl_fuzz, "scriptyfuzz-afl").step,
+    );
     // fuzz.dependOn(&b.addInstallArtifact(afl_fuzz, .{}).step);
 }
