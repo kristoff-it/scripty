@@ -1,5 +1,4 @@
 const std = @import("std");
-const afl = @import("zig-afl-kit");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -53,6 +52,7 @@ pub fn build(b: *std.Build) !void {
         afl_obj.root_module.link_libc = true; // afl runtime depends on libc
         // afl_obj.root_module.fuzz = true;
 
+        const afl = b.lazyImport(@This(), "zig-afl-kit") orelse return;
         const afl_fuzz = afl.addInstrumentedExe(b, target, optimize, afl_obj);
         b.getInstallStep().dependOn(
             &b.addInstallBinFile(afl_fuzz, "scriptyfuzz-afl").step,
