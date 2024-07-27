@@ -6,7 +6,7 @@ const Tokenizer = @import("Tokenizer.zig");
 it: Tokenizer = .{},
 state: State = .start,
 call_depth: u32 = 0, // 0 = not in a call
-last_path_end: u32 = 0, // used for call
+previous_segment_end: u32 = 0, // used for call
 
 const State = enum {
     start,
@@ -44,9 +44,8 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
         .loc = undefined,
     };
 
-    var path_segments: u32 = 0;
-
-    // if (p.call_depth == 1) @breakpoint();
+    var path_starts_at_global = false;
+    var dotted_path = false;
 
     while (p.it.next(code)) |tok| switch (p.state) {
         .syntax => unreachable,
@@ -56,76 +55,65 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 path.loc = tok.loc;
             },
             else => {
-                p.state = .syntax;
-                return .{ .tag = .syntax_error, .loc = tok.loc };
+                return p.syntaxError(tok.loc);
             },
         },
         .global => switch (tok.tag) {
             .identifier => {
                 p.state = .extend_path;
-                path_segments = 1;
                 path.loc.end = tok.loc.end;
+                path_starts_at_global = true;
             },
-            else => {
-                p.state = .syntax;
-                return .{ .tag = .syntax_error, .loc = tok.loc };
-            },
+            else => return p.syntaxError(tok.loc),
         },
         .extend_path => switch (tok.tag) {
             .dot => {
                 const id_tok = p.it.next(code);
                 if (id_tok == null or id_tok.?.tag != .identifier) {
-                    p.state = .syntax;
-                    return .{ .tag = .syntax_error, .loc = tok.loc };
+                    return p.syntaxError(tok.loc);
                 }
 
-                if (path_segments == 0) {
-                    path.loc = id_tok.?.loc;
-                } else {
-                    p.last_path_end = path.loc.end;
-                    path.loc.end = id_tok.?.loc.end;
-                }
+                // we can also get here from 'after call', eg:
+                //   $foo.bar().baz()
+                //   ----------^
+                // everything before the dot has already
+                // been returned as a node
 
-                path_segments += 1;
+                p.previous_segment_end = tok.loc.end;
+                path.loc.end = id_tok.?.loc.end;
+                dotted_path = true;
             },
             .lparen => {
-                if (path_segments < 2) {
-                    p.state = .syntax;
-                    return .{ .tag = .syntax_error, .loc = tok.loc };
+                if (path_starts_at_global and !dotted_path) {
+                    return p.syntaxError(tok.loc);
                 }
 
                 // rewind to get a a lparen
                 p.it.idx -= 1;
                 p.state = .call_begin;
-                if (path_segments > 1) {
-                    path.loc.end = p.last_path_end;
+
+                if (dotted_path) {
+                    // return the collected path up to the
+                    // previous segment, as the current one
+                    // will become part of a 'call' node
+                    path.loc.end = p.previous_segment_end;
                     return path;
-                } else {
-                    // self.last_path_end = path.loc.start - 1; // TODO: check tha this is correct
                 }
             },
             .rparen => {
                 p.state = .call_end;
                 // roll back to get a rparen token next
                 p.it.idx -= 1;
-                if (path_segments == 0) {
-                    p.state = .syntax;
-                    return .{ .tag = .syntax_error, .loc = tok.loc };
-                }
                 return path;
             },
             .comma => {
                 p.state = .call_arg;
                 if (p.call_depth == 0) {
-                    p.state = .syntax;
-                    return .{ .tag = .syntax_error, .loc = tok.loc };
+                    return p.syntaxError(tok.loc);
                 }
                 return path;
             },
-            else => {
-                p.state = .syntax;
-                return .{ .tag = .syntax_error, .loc = tok.loc };
-            },
+            else => return p.syntaxError(tok.loc),
         },
         .call_begin => {
             p.call_depth += 1;
@@ -135,7 +123,7 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                     return .{
                         .tag = .call,
                         .loc = .{
-                            .start = p.last_path_end + 1,
+                            .start = p.previous_segment_end,
                             .end = tok.loc.start,
                         },
                     };
@@ -148,7 +136,6 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 p.state = .global;
                 path.loc = tok.loc;
             },
-
             .rparen => {
                 // rollback to get a rparen next
                 p.it.idx -= 1;
@@ -156,14 +143,13 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
             },
             .identifier => {
                 p.state = .extend_call;
-                const src = tok.loc.src(code);
+                const src = tok.loc.slice(code);
                 if (std.mem.eql(u8, "true", src)) {
                     return .{ .tag = .true, .loc = tok.loc };
                 } else if (std.mem.eql(u8, "false", src)) {
                     return .{ .tag = .false, .loc = tok.loc };
                 } else {
-                    p.state = .syntax;
-                    return .{ .tag = .syntax_error, .loc = tok.loc };
+                    return p.syntaxError(tok.loc);
                 }
             },
             .string => {
@@ -174,10 +160,7 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 p.state = .extend_call;
                 return .{ .tag = .number, .loc = tok.loc };
             },
-            else => {
-                p.state = .syntax;
-                return .{ .tag = .syntax_error, .loc = tok.loc };
-            },
+            else => return p.syntaxError(tok.loc),
         },
         .extend_call => switch (tok.tag) {
             .comma => p.state = .call_arg,
@@ -186,15 +169,11 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 p.it.idx -= 1;
                 p.state = .call_end;
             },
-            else => {
-                p.state = .syntax;
-                return .{ .tag = .syntax_error, .loc = tok.loc };
-            },
+            else => return p.syntaxError(tok.loc),
         },
         .call_end => {
             if (p.call_depth == 0) {
-                p.state = .syntax;
-                return .{ .tag = .syntax_error, .loc = tok.loc };
+                return p.syntaxError(tok.loc);
             }
             p.call_depth -= 1;
             p.state = .after_call;
@@ -202,10 +181,14 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
         },
         .after_call => switch (tok.tag) {
             .dot => {
-                // rewind to get a .dot next
-                p.it.idx -= 1;
-                p.last_path_end = tok.loc.start;
+                const id_tok = p.it.next(code);
+                if (id_tok == null or id_tok.?.tag != .identifier) {
+                    return p.syntaxError(tok.loc);
+                }
+
                 p.state = .extend_path;
+                p.previous_segment_end = tok.loc.end;
+                path.loc = id_tok.?.loc;
             },
             .comma => {
                 p.state = .call_arg;
@@ -215,28 +198,29 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 p.it.idx -= 1;
                 p.state = .call_end;
             },
-            else => {
-                p.state = .syntax;
-                return .{ .tag = .syntax_error, .loc = tok.loc };
-            },
+            else => return p.syntaxError(tok.loc),
         },
     };
 
-    const not_good_state = (p.state != .after_call and
+    const not_terminal_state = (p.state != .after_call and
         p.state != .extend_path);
 
     const code_len: u32 = @intCast(code.len);
-    if (p.call_depth > 0 or not_good_state) {
-        p.state = .syntax;
-        return .{
-            .tag = .syntax_error,
-            .loc = .{ .start = code_len - 1, .end = code_len },
-        };
+    if (p.call_depth > 0 or not_terminal_state) {
+        return p.syntaxError(.{
+            .start = code_len - 1,
+            .end = code_len,
+        });
     }
 
-    if (path_segments == 0) return null;
+    if (!path_starts_at_global and !dotted_path) return null;
     path.loc.end = code_len;
     return path;
+}
+
+fn syntaxError(p: *Parser, loc: Tokenizer.Token.Loc) Node {
+    p.state = .syntax;
+    return .{ .tag = .syntax_error, .loc = loc };
 }
 
 test "basics" {
@@ -273,6 +257,20 @@ test "basics 2" {
         .call,
         .string,
         .apply,
+    };
+
+    var p: Parser = .{};
+
+    for (expected) |ex| {
+        try std.testing.expectEqual(ex, p.next(case).?.tag);
+    }
+    try std.testing.expectEqual(@as(?Node, null), p.next(case));
+}
+test "method chain" {
+    const case = "$page.permalink().endsWith('/posts/').then('x', '')";
+    const expected: []const Node.Tag = &.{
+        .path,  .call, .apply,  .call,   .string,
+        .apply, .call, .string, .string, .apply,
     };
 
     var p: Parser = .{};

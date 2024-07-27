@@ -80,6 +80,8 @@ pub fn VM(
             src: []const u8,
             opts: RunOptions,
         ) RunError!Result {
+            log.debug("Starting ScriptyVM", .{});
+            log.debug("State: {s}", .{@tagName(vm.state)});
             switch (vm.state) {
                 .ready => {},
                 .waiting => unreachable, // programming error
@@ -91,8 +93,6 @@ pub fn VM(
                     }
                 },
             }
-
-            log.debug("scripty is running!", .{});
 
             // On error make the vm usable again.
             errdefer |err| switch (@as(RunError, err)) {
@@ -108,6 +108,24 @@ pub fn VM(
                 if (quota == 1) return error.Quota;
                 if (quota > 1) quota -= 1;
             }) {
+                if (builtin.mode == .Debug) {
+                    if (vm.stack.len == 0) {
+                        log.debug("Stack is empty", .{});
+                    } else {
+                        const last = vm.stack.get(vm.stack.len - 1);
+                        log.debug("Top of stack: '{s}' {s}", .{
+                            last.loc.slice(src),
+                            if (last.debug == .unset)
+                                "<unset>"
+                            else
+                                @tagName(last.value),
+                        });
+                    }
+                }
+                log.debug("Now processing node: '{s}' {any}", .{
+                    node.loc.slice(src),
+                    node,
+                });
                 switch (node.tag) {
                     .syntax_error => {
                         vm.reset();
@@ -123,7 +141,7 @@ pub fn VM(
                     }),
                     .number => try vm.stack.append(gpa, .{
                         .debug = .set,
-                        .value = Value.fromNumberLiteral(node.loc.src(src)),
+                        .value = Value.fromNumberLiteral(node.loc.slice(src)),
                         .loc = node.loc,
                     }),
                     .true => try vm.stack.append(gpa, .{

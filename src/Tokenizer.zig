@@ -12,7 +12,11 @@ pub const Token = struct {
         start: u32,
         end: u32,
 
-        pub fn src(self: Loc, code: []const u8) []const u8 {
+        pub fn len(loc: Loc) u32 {
+            return loc.end - loc.start;
+        }
+
+        pub fn slice(self: Loc, code: []const u8) []const u8 {
             return code[self.start..self.end];
         }
 
