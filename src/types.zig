@@ -45,6 +45,7 @@ pub fn defaultCall(
             switch (value) {
                 inline else => |v, tag| {
                     const Builtin = Value.builtinsFor(tag);
+
                     inline for (@typeInfo(Builtin).Struct.decls) |decl| {
                         if (decl.name[0] == '_') continue;
                         if (std.mem.eql(u8, decl.name, fn_name)) {
@@ -57,9 +58,26 @@ pub fn defaultCall(
                         }
                     }
 
+                    if (hasDecl(@TypeOf(v), "fallbackCall")) {
+                        return v.fallbackCall(
+                            gpa,
+                            fn_name,
+                            args,
+                            ext,
+                        );
+                    }
+
                     return .{ .err = "builtin not found" };
                 },
             }
         }
     }.call;
+}
+
+inline fn hasDecl(T: type, comptime decl: []const u8) bool {
+    return switch (@typeInfo(T)) {
+        else => false,
+        .Pointer => |p| return hasDecl(p.child, decl),
+        .Struct, .Union, .Enum, .Opaque => return @hasDecl(T, decl),
+    };
 }
