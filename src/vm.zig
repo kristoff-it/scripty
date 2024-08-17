@@ -10,12 +10,11 @@ pub const Diagnostics = struct {
     loc: Tokenizer.Token.Loc,
 };
 
-pub const RunError = error{ OutOfMemory, WantResource, Quota };
+pub const RunError = error{ OutOfMemory, Interrupt, Quota };
 
 pub fn VM(
     comptime _Context: type,
     comptime _Value: type,
-    comptime _ResourceDescriptor: type,
 ) type {
     if (!@hasDecl(_Value, "builtinsFor")) {
         @compileLog("Value type must specify builtinsFor");
@@ -24,7 +23,6 @@ pub fn VM(
     return struct {
         parser: Parser = .{},
         stack: std.MultiArrayList(Result) = .{},
-        ext: ResourceDescriptor = undefined,
         state: enum { ready, waiting, pending } = .ready,
 
         pub fn deinit(self: @This(), gpa: std.mem.Allocator) void {
@@ -33,7 +31,6 @@ pub fn VM(
 
         pub const Context = _Context;
         pub const Value = _Value;
-        pub const ResourceDescriptor = _ResourceDescriptor;
 
         pub const Result = struct {
             debug: if (builtin.mode == .Debug)
@@ -53,7 +50,7 @@ pub fn VM(
 
         const ScriptyVM = @This();
 
-        pub fn insertResource(vm: *ScriptyVM, v: Value) void {
+        pub fn insertValue(vm: *ScriptyVM, v: Value) void {
             std.debug.assert(vm.state == .waiting);
             const stack_values = vm.stack.items(.value);
             stack_values[stack_values.len - 1] = v;
@@ -61,16 +58,10 @@ pub fn VM(
             vm.ext = undefined;
         }
 
-        pub fn getResourceDescriptor(vm: *ScriptyVM) ResourceDescriptor {
-            std.debug.assert(vm.state == .waiting);
-            return vm.ext;
-        }
-
         pub fn reset(vm: *ScriptyVM) void {
             vm.stack.shrinkRetainingCapacity(0);
             vm.state = .ready;
             vm.parser = .{};
-            vm.ext = undefined;
         }
 
         pub fn run(
@@ -96,7 +87,7 @@ pub fn VM(
 
             // On error make the vm usable again.
             errdefer |err| switch (@as(RunError, err)) {
-                error.Quota, error.WantResource => {},
+                error.Quota, error.Interrupt => {},
                 else => vm.reset(),
             };
 
@@ -265,11 +256,11 @@ pub fn VM(
                         stack_locs[call_idx].start = call_loc.start;
                         stack_locs[call_idx].end = call_loc.end + 1;
 
-                        const new_value = old_value.call(gpa, fn_name, args, &vm.ext) catch |err| switch (err) {
+                        const new_value = old_value.call(gpa, fn_name, args) catch |err| switch (err) {
                             error.OutOfMemory => return error.OutOfMemory,
-                            error.WantResource => {
+                            error.Interrupt => {
                                 vm.state = .waiting;
-                                return error.WantResource;
+                                return error.Interrupt;
                             },
                         };
 
@@ -308,11 +299,10 @@ pub fn VM(
     };
 }
 
-const TestExtResource = []const u8;
 pub const TestValue = union(Tag) {
-    global: *TestContext,
-    site: *TestContext.Site,
-    page: *TestContext.Page,
+    global: *const TestContext,
+    site: *const TestContext.Site,
+    page: *const TestContext.Page,
     string: []const u8,
     bool: bool,
     int: usize,
@@ -348,7 +338,7 @@ pub const TestValue = union(Tag) {
         }
     }
 
-    pub const call = types.defaultCall(TestValue, TestExtResource);
+    pub const call = types.defaultCall(TestValue);
 
     pub fn builtinsFor(comptime tag: Tag) type {
         const StringBuiltins = struct {
@@ -357,7 +347,6 @@ pub const TestValue = union(Tag) {
                     str: []const u8,
                     gpa: std.mem.Allocator,
                     args: []const TestValue,
-                    _: *TestExtResource,
                 ) !TestValue {
                     if (args.len != 0) return .{
                         .err = "'len' wants no arguments",
@@ -370,13 +359,13 @@ pub const TestValue = union(Tag) {
                     str: []const u8,
                     gpa: std.mem.Allocator,
                     args: []const TestValue,
-                    ext_descriptor: *TestExtResource,
                 ) !TestValue {
                     if (args.len != 0) return .{
                         .err = "'ext' wants no arguments",
                     };
-                    ext_descriptor.* = try gpa.dupe(u8, str);
-                    return error.WantResource;
+                    _ = str;
+                    _ = gpa;
+                    return error.Interrupt;
                 }
             };
         };
@@ -403,9 +392,9 @@ pub const TestValue = union(Tag) {
         _ = gpa;
         const T = @TypeOf(value);
         switch (T) {
-            *TestContext => return .{ .global = value },
-            *TestContext.Site => return .{ .site = value },
-            *TestContext.Page => return .{ .page = value },
+            *TestContext, *const TestContext => return .{ .global = value },
+            *const TestContext.Site => return .{ .site = value },
+            *const TestContext.Page => return .{ .page = value },
             []const u8 => return .{ .string = value },
             usize => return .{ .int = value },
             else => @compileError("TODO: add support for " ++ @typeName(T)),
@@ -422,18 +411,18 @@ const TestContext = struct {
         name: []const u8,
 
         pub const PassByRef = true;
-        pub const dot = types.defaultDot(Site, TestValue);
+        pub const dot = types.defaultDot(Site, TestValue, false);
     };
     pub const Page = struct {
         title: []const u8,
         content: []const u8,
 
         pub const PassByRef = true;
-        pub const dot = types.defaultDot(Page, TestValue);
+        pub const dot = types.defaultDot(Page, TestValue, false);
     };
 
     pub const PassByRef = true;
-    pub const dot = types.defaultDot(TestContext, TestValue);
+    pub const dot = types.defaultDot(TestContext, TestValue, false);
 };
 
 const test_ctx: TestContext = .{
@@ -447,7 +436,7 @@ const test_ctx: TestContext = .{
     },
 };
 
-const TestInterpreter = VM(TestContext, TestValue, TestExtResource);
+const TestInterpreter = VM(TestContext, TestValue);
 
 test "basic" {
     const code = "$page.title";
@@ -495,23 +484,7 @@ test "interrupt" {
     var t = test_ctx;
     var vm: TestInterpreter = .{};
     try std.testing.expectError(
-        error.WantResource,
+        error.Interrupt,
         vm.run(arena.allocator(), &t, code, .{}),
     );
-
-    const descriptor = vm.getResourceDescriptor();
-    try std.testing.expectEqualStrings(descriptor, "Home");
-
-    const ext = "banana";
-    vm.insertResource(.{ .string = ext });
-
-    const result = try vm.run(arena.allocator(), &t, code, .{});
-
-    errdefer log.debug("result = `{s}`\n", .{result.value.string});
-
-    const ex: TestInterpreter.Result = .{
-        .loc = .{ .start = 12, .end = 16 },
-        .value = .{ .string = ext },
-    };
-    try std.testing.expectEqualDeep(ex, result);
 }
