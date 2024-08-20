@@ -1,7 +1,7 @@
 const std = @import("std");
 const scripty = @import("scripty");
 
-pub const Interpreter = scripty.VM(TestContext, TestValue, TestExtResource);
+pub const Interpreter = scripty.VM(TestContext, TestValue);
 pub const ctx: TestContext = .{
     .version = "v0",
     .page = .{
@@ -13,7 +13,6 @@ pub const ctx: TestContext = .{
     },
 };
 
-const TestExtResource = []const u8;
 const TestValue = union(Tag) {
     global: *TestContext,
     site: *TestContext.Site,
@@ -53,7 +52,7 @@ const TestValue = union(Tag) {
         }
     }
 
-    pub const call = scripty.defaultCall(TestValue, TestExtResource);
+    pub const call = scripty.defaultCall(TestValue);
 
     pub fn builtinsFor(comptime tag: Tag) type {
         const StringBuiltins = struct {
@@ -62,26 +61,10 @@ const TestValue = union(Tag) {
                     str: []const u8,
                     gpa: std.mem.Allocator,
                     args: []const TestValue,
-                    _: *TestExtResource,
                 ) !TestValue {
                     if (args.len != 0) return .{ .err = "'len' wants no arguments" };
                     return TestValue.from(gpa, str.len);
                 }
-
-                pub const ext = struct {
-                    pub fn call(
-                        str: []const u8,
-                        gpa: std.mem.Allocator,
-                        args: []const TestValue,
-                        ext_descriptor: *TestExtResource,
-                    ) !TestValue {
-                        if (args.len != 0) return .{
-                            .err = "'ext' wants no arguments",
-                        };
-                        ext_descriptor.* = try gpa.dupe(u8, str);
-                        return error.WantResource;
-                    }
-                };
             };
         };
         return switch (tag) {
@@ -125,16 +108,16 @@ const TestContext = struct {
         name: []const u8,
 
         pub const PassByRef = true;
-        pub const dot = scripty.defaultDot(Site, TestValue);
+        pub const dot = scripty.defaultDot(Site, TestValue, true);
     };
     pub const Page = struct {
         title: []const u8,
         content: []const u8,
 
         pub const PassByRef = true;
-        pub const dot = scripty.defaultDot(Page, TestValue);
+        pub const dot = scripty.defaultDot(Page, TestValue, true);
     };
 
     pub const PassByRef = true;
-    pub const dot = scripty.defaultDot(TestContext, TestValue);
+    pub const dot = scripty.defaultDot(TestContext, TestValue, true);
 };

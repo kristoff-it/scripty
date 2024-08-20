@@ -39,6 +39,8 @@ pub const Node = struct {
 };
 
 pub fn next(p: *Parser, code: []const u8) ?Node {
+    if (p.it.idx == code.len) return null;
+
     var path: Node = .{
         .tag = .path,
         .loc = undefined,
@@ -202,19 +204,20 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
         },
     };
 
-    const not_terminal_state = (p.state != .after_call and
-        p.state != .extend_path);
+    const in_terminal_state = (p.state == .after_call or
+        p.state == .extend_path);
 
     const code_len: u32 = @intCast(code.len);
-    if (p.call_depth > 0 or not_terminal_state) {
+    if (p.call_depth > 0 or !in_terminal_state) {
         return p.syntaxError(.{
             .start = code_len - 1,
             .end = code_len,
         });
     }
 
-    if (!path_starts_at_global and !dotted_path) return null;
+    // if (!path_starts_at_global and !dotted_path) return null;
     path.loc.end = code_len;
+    if (path.loc.len() == 0) return null;
     return path;
 }
 
@@ -271,6 +274,21 @@ test "method chain" {
     const expected: []const Node.Tag = &.{
         .path,  .call, .apply,  .call,   .string,
         .apply, .call, .string, .string, .apply,
+    };
+
+    var p: Parser = .{};
+
+    for (expected) |ex| {
+        try std.testing.expectEqual(ex, p.next(case).?.tag);
+    }
+    try std.testing.expectEqual(@as(?Node, null), p.next(case));
+}
+
+test "dot after call" {
+    const case = "$page.locale!('en-US').custom";
+    const expected: []const Node.Tag = &.{
+        .path, .call, .string, .apply,
+        .path,
     };
 
     var p: Parser = .{};

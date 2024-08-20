@@ -104,7 +104,8 @@ pub fn VM(
                         log.debug("Stack is empty", .{});
                     } else {
                         const last = vm.stack.get(vm.stack.len - 1);
-                        log.debug("Top of stack: '{s}' {s}", .{
+                        log.debug("Top of stack: ({}) '{s}' {s}", .{
+                            vm.stack.len,
                             last.loc.slice(src),
                             if (last.debug == .unset)
                                 "<unset>"
@@ -183,8 +184,9 @@ pub fn VM(
                         else blk: {
                             if (builtin.mode == .Debug) {
                                 const stack_debug = slice.items(.debug);
+
                                 std.debug.assert(
-                                    stack_debug[stack_values.len - 1] == .set,
+                                    stack_debug[stack_debug.len - 1] == .set,
                                 );
                             }
                             break :blk stack_values[stack_values.len - 1];
@@ -206,9 +208,6 @@ pub fn VM(
                             stack_values[stack_values.len - 1] = new_value;
                             if (builtin.mode == .Debug) {
                                 const stack_debug = slice.items(.debug);
-                                std.debug.assert(
-                                    stack_debug[stack_values.len - 1] == .unset,
-                                );
                                 stack_debug[stack_values.len - 1] = .set;
                             }
                         }
@@ -283,6 +282,7 @@ pub fn VM(
             const result = vm.stack.pop();
             std.debug.assert(result.value != .err);
             vm.reset();
+            log.debug("returning = '{any}'", .{result});
             return result;
         }
 
