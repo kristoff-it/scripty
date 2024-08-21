@@ -109,7 +109,7 @@ pub fn next(self: *Tokenizer, code: []const u8) ?Token {
             .start => switch (c) {
                 else => state = .invalid,
                 0 => return null,
-                ' ' => res.loc.start += 1,
+                ' ', '\n' => res.loc.start += 1,
                 'a'...'z', 'A'...'Z', '_' => {
                     state = .identifier;
                 },
