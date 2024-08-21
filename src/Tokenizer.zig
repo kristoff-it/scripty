@@ -299,6 +299,19 @@ test "general language" {
             .rparen,
         } },
         // zig fmt: on
+        .{ .code = "$date.asDate('iso8601', 'b', \n 'c')", .expected = &.{
+            .dollar,
+            .identifier,
+            .dot,
+            .identifier,
+            .lparen,
+            .string,
+            .comma,
+            .string,
+            .comma,
+            .string,
+            .rparen,
+        } },
     };
 
     for (cases) |case| {
@@ -341,7 +354,7 @@ test "strings" {
     while (cases_it.next()) |case| {
         errdefer std.debug.print("Case: {s}\n", .{case});
 
-        var it: Tokenizer = .{ };
+        var it: Tokenizer = .{};
         errdefer std.debug.print("Tokenizer idx: {}\n", .{it.idx});
         const t = it.next(case) orelse return error.Null;
         const src = case[t.loc.start..t.loc.end];
