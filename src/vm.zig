@@ -16,10 +16,6 @@ pub fn VM(
     comptime _Context: type,
     comptime _Value: type,
 ) type {
-    if (!@hasDecl(_Value, "builtinsFor")) {
-        @compileLog("Value type must specify builtinsFor");
-    }
-
     return struct {
         parser: Parser = .{},
         stack: std.MultiArrayList(Result) = .{},
@@ -180,7 +176,7 @@ pub fn VM(
                         const path = src[start..end];
 
                         const old_value = if (global)
-                            Value.from(gpa, ctx)
+                            try Value.from(gpa, ctx)
                         else blk: {
                             if (builtin.mode == .Debug) {
                                 const stack_debug = slice.items(.debug);

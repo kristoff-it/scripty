@@ -62,8 +62,9 @@ const TestValue = union(Tag) {
                     gpa: std.mem.Allocator,
                     args: []const TestValue,
                 ) !TestValue {
+                    _ = gpa;
                     if (args.len != 0) return .{ .err = "'len' wants no arguments" };
-                    return TestValue.from(gpa, str.len);
+                    return TestValue.from(str.len);
                 }
             };
         };
@@ -86,7 +87,7 @@ const TestValue = union(Tag) {
         return .{ .bool = b };
     }
 
-    pub fn from(gpa: std.mem.Allocator, value: anytype) TestValue {
+    pub fn from(gpa: std.mem.Allocator, value: anytype) !TestValue {
         _ = gpa;
         const T = @TypeOf(value);
         switch (T) {

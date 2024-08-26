@@ -44,7 +44,10 @@ pub fn defaultCall(comptime Value: type) fn (
         ) error{ OutOfMemory, Interrupt }!Value {
             switch (value) {
                 inline else => |v, tag| {
-                    const Builtin = Value.builtinsFor(tag);
+                    const Builtin = if (@hasDecl(Value, "builtinsFor"))
+                        Value.builtinsFor(tag)
+                    else
+                        defaultBuiltinsFor(Value, @TypeOf(v));
 
                     inline for (@typeInfo(Builtin).Struct.decls) |decl| {
                         if (decl.name[0] == '_') continue;
@@ -85,4 +88,25 @@ inline fn constify(comptime T: type, comptime mut: bool) type {
         true => *T,
         false => *const T,
     };
+}
+
+pub fn defaultBuiltinsFor(comptime Value: type, comptime Field: type) type {
+    inline for (std.meta.fields(Value)) |f| {
+        if (f.type == Field) {
+            switch (@typeInfo(f.type)) {
+                .Pointer => |ptr| {
+                    if (@typeInfo(ptr.child) == .Struct) {
+                        return @field(ptr.child, "Builtins");
+                    }
+                },
+                .Struct => {
+                    return @field(f.type, "Builtins");
+                },
+                else => {},
+            }
+
+            return struct {};
+        }
+    }
+    @compileError("Value has no field of value " ++ @typeName(Field));
 }
