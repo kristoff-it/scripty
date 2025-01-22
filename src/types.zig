@@ -95,7 +95,7 @@ pub fn defaultBuiltinsFor(comptime Value: type, comptime Field: type) type {
         if (f.type == Field) {
             switch (@typeInfo(f.type)) {
                 .pointer => |ptr| {
-                    if (@typeInfo(ptr.child) == .Struct) {
+                    if (@typeInfo(ptr.child) == .@"struct") {
                         return @field(ptr.child, "Builtins");
                     }
                 },
