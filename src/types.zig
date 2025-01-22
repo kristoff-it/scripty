@@ -11,11 +11,11 @@ pub fn defaultDot(
             gpa: std.mem.Allocator,
             path: []const u8,
         ) !Value {
-            const info = @typeInfo(Context).Struct;
+            const info = @typeInfo(Context).@"struct";
             inline for (info.fields) |f| {
                 if (f.name[0] == '_') continue;
                 if (std.mem.eql(u8, f.name, path)) {
-                    const by_ref = @typeInfo(f.type) == .Struct and @hasDecl(f.type, "PassByRef") and f.type.PassByRef;
+                    const by_ref = @typeInfo(f.type) == .@"struct" and @hasDecl(f.type, "PassByRef") and f.type.PassByRef;
                     if (by_ref) {
                         return Value.from(gpa, &@field(self, f.name));
                     } else {
@@ -49,7 +49,7 @@ pub fn defaultCall(comptime Value: type) fn (
                     else
                         defaultBuiltinsFor(Value, @TypeOf(v));
 
-                    inline for (@typeInfo(Builtin).Struct.decls) |decl| {
+                    inline for (@typeInfo(Builtin).@"struct".decls) |decl| {
                         if (decl.name[0] == '_') continue;
                         if (std.mem.eql(u8, decl.name, fn_name)) {
                             return @field(Builtin, decl.name).call(
@@ -78,8 +78,8 @@ pub fn defaultCall(comptime Value: type) fn (
 inline fn hasDecl(T: type, comptime decl: []const u8) bool {
     return switch (@typeInfo(T)) {
         else => false,
-        .Pointer => |p| return hasDecl(p.child, decl),
-        .Struct, .Union, .Enum, .Opaque => return @hasDecl(T, decl),
+        .pointer => |p| return hasDecl(p.child, decl),
+        .@"struct", .@"union", .@"enum", .@"opaque" => return @hasDecl(T, decl),
     };
 }
 

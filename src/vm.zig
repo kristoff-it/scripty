@@ -108,6 +108,12 @@ pub fn VM(
                             else
                                 @tagName(last.value),
                         });
+
+                        if (@hasField(Value, "page")) {
+                            if (last.debug != .unset and last.value == .page) {
+                                log.debug("Page: {*}", .{last.value.page});
+                            }
+                        }
                     }
                 }
                 log.debug("Now processing node: '{s}' {any}", .{
@@ -384,7 +390,7 @@ pub const TestValue = union(Tag) {
         return .{ .bool = b };
     }
 
-    pub fn from(gpa: std.mem.Allocator, value: anytype) TestValue {
+    pub fn from(gpa: std.mem.Allocator, value: anytype) !TestValue {
         _ = gpa;
         const T = @TypeOf(value);
         switch (T) {

@@ -62,9 +62,8 @@ const TestValue = union(Tag) {
                     gpa: std.mem.Allocator,
                     args: []const TestValue,
                 ) !TestValue {
-                    _ = gpa;
                     if (args.len != 0) return .{ .err = "'len' wants no arguments" };
-                    return TestValue.from(str.len);
+                    return TestValue.from(gpa, str.len);
                 }
             };
         };
