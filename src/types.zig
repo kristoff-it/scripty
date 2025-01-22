@@ -94,12 +94,12 @@ pub fn defaultBuiltinsFor(comptime Value: type, comptime Field: type) type {
     inline for (std.meta.fields(Value)) |f| {
         if (f.type == Field) {
             switch (@typeInfo(f.type)) {
-                .Pointer => |ptr| {
+                .pointer => |ptr| {
                     if (@typeInfo(ptr.child) == .Struct) {
                         return @field(ptr.child, "Builtins");
                     }
                 },
-                .Struct => {
+                .@"struct" => {
                     return @field(f.type, "Builtins");
                 },
                 else => {},
