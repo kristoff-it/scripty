@@ -281,7 +281,7 @@ pub fn VM(
             }
 
             std.debug.assert(vm.stack.items(.loc).len == 1);
-            const result = vm.stack.pop();
+            const result = vm.stack.pop().?;
             std.debug.assert(result.value != .err);
             vm.reset();
             log.debug("returning = '{any}'", .{result});
