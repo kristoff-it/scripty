@@ -3,7 +3,7 @@ const context = @import("context.zig");
 const Interpreter = context.Interpreter;
 const ctx = context.ctx;
 
-pub const std_options = .{ .log_level = .err };
+pub const std_options: std.Options = .{ .log_level = .err };
 const mem = std.mem;
 
 // const toggle_me = std.mem.backend_can_use_eql_bytes;

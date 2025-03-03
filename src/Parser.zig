@@ -39,8 +39,6 @@ pub const Node = struct {
 };
 
 pub fn next(p: *Parser, code: []const u8) ?Node {
-    if (p.it.idx == code.len) return null;
-
     var path: Node = .{
         .tag = .path,
         .loc = undefined,
@@ -215,7 +213,6 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
         });
     }
 
-    // if (!path_starts_at_global and !dotted_path) return null;
     path.loc.end = code_len;
     if (path.loc.len() == 0) return null;
     return path;
