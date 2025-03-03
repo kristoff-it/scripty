@@ -1,10 +1,10 @@
 .{
-    .name = "scripty",
+    .name = .scripty,
     .version = "0.1.0",
+    .fingerprint = 0x3dcb7e203bb9a22c,
     .dependencies = .{
-        .@"zig-afl-kit" = .{
-            .url = "git+https://github.com/kristoff-it/zig-afl-kit#f003bfe714f2964c90939fdc940d5993190a66ec",
-            .hash = "1220f2d8402bb7bbc4786b9c0aad73910929ea209cbd3b063842371d68abfed33c1e",
+        .afl_kit = .{
+            .path = "git+https://github.com/kristoff-it/zig-afl-kit?ref=zig-0.14.0#a462c4a3a68f082adc64f53dc4006cee9b670dec",
             .lazy = true,
         },
     },

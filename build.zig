@@ -53,10 +53,10 @@ pub fn build(b: *std.Build) !void {
         // afl_obj.root_module.fuzz = true;
 
         const afl = b.lazyImport(@This(), "zig-afl-kit") orelse return;
-        const afl_fuzz = afl.addInstrumentedExe(b, target, optimize, afl_obj);
-        b.getInstallStep().dependOn(
+        const afl_fuzz = afl.addInstrumentedExe(b, target, optimize, null, afl_obj);
+        b.default_step.dependOn(
             &b.addInstallBinFile(afl_fuzz, "scriptyfuzz-afl").step,
         );
-        // fuzz.dependOn(&b.addInstallArtifact(afl_fuzz, .{}).step);
+        // b.default_step.dependOn(&b.addInstallArtifact(afl_fuzz, .{}).step);
     }
 }
