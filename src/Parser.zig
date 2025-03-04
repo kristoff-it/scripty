@@ -39,6 +39,15 @@ pub const Node = struct {
 };
 
 pub fn next(p: *Parser, code: []const u8) ?Node {
+    if (p.it.idx == code.len) {
+        const in_terminal_state = (p.state == .after_call or
+            p.state == .extend_path);
+        if (in_terminal_state) return null;
+        return p.syntaxError(.{
+            .start = p.it.idx,
+            .end = p.it.idx,
+        });
+    }
     var path: Node = .{
         .tag = .path,
         .loc = undefined,
