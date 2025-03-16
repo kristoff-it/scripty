@@ -257,7 +257,7 @@ pub fn VM(
                         stack_locs[call_idx].start = call_loc.start;
                         stack_locs[call_idx].end = call_loc.end + 1;
 
-                        const new_value = old_value.call(gpa, fn_name, args) catch |err| switch (err) {
+                        const new_value = old_value.call(gpa, ctx, fn_name, args) catch |err| switch (err) {
                             error.OutOfMemory => return error.OutOfMemory,
                             error.Interrupt => {
                                 vm.state = .waiting;
@@ -340,7 +340,7 @@ pub const TestValue = union(Tag) {
         }
     }
 
-    pub const call = types.defaultCall(TestValue);
+    pub const call = types.defaultCall(TestValue, TestContext);
 
     pub fn builtinsFor(comptime tag: Tag) type {
         const StringBuiltins = struct {
@@ -348,6 +348,7 @@ pub const TestValue = union(Tag) {
                 pub fn call(
                     str: []const u8,
                     gpa: std.mem.Allocator,
+                    _: *const TestContext,
                     args: []const TestValue,
                 ) !TestValue {
                     if (args.len != 0) return .{
@@ -360,6 +361,7 @@ pub const TestValue = union(Tag) {
                 pub fn call(
                     str: []const u8,
                     gpa: std.mem.Allocator,
+                    _: *const TestContext,
                     args: []const TestValue,
                 ) !TestValue {
                     if (args.len != 0) return .{

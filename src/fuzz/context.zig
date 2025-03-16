@@ -52,7 +52,7 @@ const TestValue = union(Tag) {
         }
     }
 
-    pub const call = scripty.defaultCall(TestValue);
+    pub const call = scripty.defaultCall(TestValue, TestContext);
 
     pub fn builtinsFor(comptime tag: Tag) type {
         const StringBuiltins = struct {
@@ -60,6 +60,7 @@ const TestValue = union(Tag) {
                 pub fn call(
                     str: []const u8,
                     gpa: std.mem.Allocator,
+                    _: *const TestContext,
                     args: []const TestValue,
                 ) !TestValue {
                     if (args.len != 0) return .{ .err = "'len' wants no arguments" };

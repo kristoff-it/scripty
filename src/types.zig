@@ -29,9 +29,10 @@ pub fn defaultDot(
     }.dot;
 }
 
-pub fn defaultCall(comptime Value: type) fn (
+pub fn defaultCall(Value: type, Context: type) fn (
     Value,
     std.mem.Allocator,
+    *const Context,
     []const u8,
     []const Value,
 ) error{ OutOfMemory, Interrupt }!Value {
@@ -39,6 +40,7 @@ pub fn defaultCall(comptime Value: type) fn (
         pub fn call(
             value: Value,
             gpa: std.mem.Allocator,
+            ctx: *const Context,
             fn_name: []const u8,
             args: []const Value,
         ) error{ OutOfMemory, Interrupt }!Value {
@@ -55,6 +57,7 @@ pub fn defaultCall(comptime Value: type) fn (
                             return @field(Builtin, decl.name).call(
                                 v,
                                 gpa,
+                                ctx,
                                 args,
                             );
                         }
@@ -63,6 +66,7 @@ pub fn defaultCall(comptime Value: type) fn (
                     if (hasDecl(@TypeOf(v), "fallbackCall")) {
                         return v.fallbackCall(
                             gpa,
+                            ctx,
                             fn_name,
                             args,
                         );
