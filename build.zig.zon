@@ -9,6 +9,10 @@
             .hash = "afl_kit-0.1.0-uhOgGDkdAAALG16McR2B4b8QwRUQ2sa9XdgDTFXRWQTY",
             .lazy = true,
         },
+        .tracy = .{
+            .url = "git+https://github.com/kristoff-it/tracy#67d2d89e351048c76fc6d161e0ac09d8a831dc60",
+            .hash = "tracy-0.0.0-4Xw-1pwwAABTfMgoDP1unCbZDZhJEfict7XCBGF6IdIn",
+        },
     },
     .paths = .{
         "LICENSE",

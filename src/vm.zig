@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const tracy = @import("tracy");
 const types = @import("types.zig");
 const Tokenizer = @import("Tokenizer.zig");
 const Parser = @import("Parser.zig");
@@ -257,12 +258,17 @@ pub fn VM(
                         stack_locs[call_idx].start = call_loc.start;
                         stack_locs[call_idx].end = call_loc.end + 1;
 
-                        const new_value = old_value.call(gpa, ctx, fn_name, args) catch |err| switch (err) {
-                            error.OutOfMemory => return error.OutOfMemory,
-                            error.Interrupt => {
-                                vm.state = .waiting;
-                                return error.Interrupt;
-                            },
+                        const new_value = blk: {
+                            const apply_zone = tracy.traceNamed(@src(), "apply");
+                            defer apply_zone.end();
+
+                            break :blk old_value.call(gpa, ctx, fn_name, args) catch |err| switch (err) {
+                                error.OutOfMemory => return error.OutOfMemory,
+                                error.Interrupt => {
+                                    vm.state = .waiting;
+                                    return error.Interrupt;
+                                },
+                            };
                         };
 
                         if (new_value == .err) {
