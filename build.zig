@@ -14,12 +14,14 @@ pub fn build(b: *std.Build) !void {
 
     const scripty = b.addModule("scripty", .{
         .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
     });
 
     scripty.addImport("tracy", tracy.module("tracy"));
 
     const unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/root.zig"),
+        .root_module = scripty,
         .target = target,
         .optimize = optimize,
     });
