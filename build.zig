@@ -22,15 +22,15 @@ pub fn build(b: *std.Build) !void {
 
     const unit_tests = b.addTest(.{
         .root_module = scripty,
-        .target = target,
-        .optimize = optimize,
     });
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
     const fuzz_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/fuzz.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/fuzz.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     fuzz_unit_tests.root_module.addImport("scripty", scripty);
     const run_fuzz_unit_tests = b.addRunArtifact(fuzz_unit_tests);
@@ -42,10 +42,12 @@ pub fn build(b: *std.Build) !void {
     if (b.option(bool, "fuzz", "Generate an executable for AFL++ (persistent mode) plus extra tooling") orelse false) {
         const scripty_fuzz = b.addExecutable(.{
             .name = "scriptyfuzz",
-            .root_source_file = b.path("src/fuzz.zig"),
-            .target = target,
-            .optimize = .Debug,
-            .single_threaded = true,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/fuzz.zig"),
+                .target = target,
+                .optimize = .Debug,
+                .single_threaded = true,
+            }),
         });
 
         scripty_fuzz.root_module.addImport("scripty", scripty);
@@ -53,10 +55,12 @@ pub fn build(b: *std.Build) !void {
 
         const afl_obj = b.addObject(.{
             .name = "scriptyfuzz-afl",
-            .root_source_file = b.path("src/fuzz/afl.zig"),
-            // .target = b.resolveTargetQuery(.{ .cpu_model = .baseline }),
-            .target = target,
-            .optimize = .Debug,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/fuzz/afl.zig"),
+                // .target = b.resolveTargetQuery(.{ .cpu_model = .baseline }),
+                .target = target,
+                .optimize = .Debug,
+            }),
         });
 
         afl_obj.root_module.addImport("scripty", scripty);
