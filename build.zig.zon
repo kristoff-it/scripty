@@ -2,7 +2,7 @@
     .name = .scripty,
     .version = "0.1.0",
     .fingerprint = 0x3dcb7e203bb9a22c,
-    .minimum_zig_version = "0.14.0-dev.3451+d8d2aa9af",
+    .minimum_zig_version = "0.15.0-dev.1034+bd97b6618",
     .dependencies = .{
         .afl_kit = .{
             .url = "git+https://github.com/kristoff-it/zig-afl-kit#39c33d45dbe3605a9ef7cab863620d1ca78a3623",
