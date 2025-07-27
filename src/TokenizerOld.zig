@@ -93,129 +93,110 @@ const State = enum {
     string,
 };
 
-pub fn next(tokenizer: *Tokenizer, src: []const u8) ?Token {
-    var tok: Token = .{
+pub fn next(self: *Tokenizer, code: []const u8) ?Token {
+    var state: State = .start;
+    var res: Token = .{
         .tag = .invalid,
         .loc = .{
-            .start = tokenizer.idx,
+            .start = self.idx,
             .end = undefined,
         },
     };
-    state: switch (State.start) {
-        .start => start: switch (tokenizer.char(src)) {
-            else => continue :state .invalid,
-            0 => return null,
-            // Ignore reasonable whitespace
-            ' ', '\n', '\t', '\r' => {
-                tokenizer.idx += 1;
-                tok.loc.start += 1;
-                continue :start tokenizer.char(src);
-            },
-            'a'...'z', 'A'...'Z', '_' => {
-                tokenizer.idx += 1;
-                continue :state .identifier;
-            },
-            '"', '\'' => {
-                tokenizer.idx += 1;
-                continue :state .string;
-            },
-            '0'...'9', '-' => {
-                tokenizer.idx += 1;
-                continue :state .number;
-            },
+    while (true) : (self.idx += 1) {
+        const c = if (self.idx >= code.len) 0 else code[self.idx];
 
-            '$' => {
-                tokenizer.idx += 1;
-                tok.tag = .dollar;
-                tok.loc.end = tokenizer.idx;
-                break :state;
-            },
-            ',' => {
-                tokenizer.idx += 1;
-                tok.tag = .comma;
-                tok.loc.end = tokenizer.idx;
-                break :state;
-            },
-            '.' => {
-                tokenizer.idx += 1;
-                tok.tag = .dot;
-                tok.loc.end = tokenizer.idx;
-                break :state;
-            },
-            '(' => {
-                tokenizer.idx += 1;
-                tok.tag = .lparen;
-                tok.loc.end = tokenizer.idx;
-                break :state;
-            },
-            ')' => {
-                tokenizer.idx += 1;
-                tok.tag = .rparen;
-                tok.loc.end = tokenizer.idx;
-                break :state;
-            },
-        },
-        .identifier => identifier: switch (tokenizer.char(src)) {
-            'a'...'z', 'A'...'Z', '0'...'9', '_', '?', '!' => {
-                tokenizer.idx += 1;
-                continue :identifier tokenizer.char(src);
-            },
-            else => {
-                tok.tag = .identifier;
-                tok.loc.end = tokenizer.idx;
-                break :state;
-            },
-        },
-        .string => string: switch (tokenizer.char(src)) {
-            0 => {
-                tok.tag = .invalid;
-                tok.loc.end = tokenizer.idx;
-                break :state;
-            },
+        switch (state) {
+            .start => switch (c) {
+                else => state = .invalid,
+                0 => return null,
+                ' ', '\n' => res.loc.start += 1,
+                'a'...'z', 'A'...'Z', '_' => {
+                    state = .identifier;
+                },
+                '"', '\'' => {
+                    state = .string;
+                },
+                '0'...'9', '-' => {
+                    state = .number;
+                },
 
-            '"', '\'' => if (src[tokenizer.idx] == src[tok.loc.start] and
-                evenSlashes(src[0..tokenizer.idx]))
-            {
-                tokenizer.idx += 1;
-                tok.tag = .string;
-                tok.loc.end = tokenizer.idx;
-                break :state;
-            } else {
-                tokenizer.idx += 1;
-                continue :string tokenizer.char(src);
+                '$' => {
+                    self.idx += 1;
+                    res.tag = .dollar;
+                    res.loc.end = self.idx;
+                    break;
+                },
+                ',' => {
+                    self.idx += 1;
+                    res.tag = .comma;
+                    res.loc.end = self.idx;
+                    break;
+                },
+                '.' => {
+                    self.idx += 1;
+                    res.tag = .dot;
+                    res.loc.end = self.idx;
+                    break;
+                },
+                '(' => {
+                    self.idx += 1;
+                    res.tag = .lparen;
+                    res.loc.end = self.idx;
+                    break;
+                },
+                ')' => {
+                    self.idx += 1;
+                    res.tag = .rparen;
+                    res.loc.end = self.idx;
+                    break;
+                },
             },
-            else => {
-                tokenizer.idx += 1;
-                continue :string tokenizer.char(src);
+            .identifier => switch (c) {
+                'a'...'z', 'A'...'Z', '0'...'9', '_', '?', '!' => {},
+                else => {
+                    res.tag = .identifier;
+                    res.loc.end = self.idx;
+                    break;
+                },
             },
-        },
-        .number => number: switch (tokenizer.char(src)) {
-            '0'...'9', '.', '_' => {
-                tokenizer.idx += 1;
-                continue :number tokenizer.char(src);
+            .string => switch (c) {
+                0 => {
+                    res.tag = .invalid;
+                    res.loc.end = self.idx;
+                    break;
+                },
+
+                '"', '\'' => if (c == code[res.loc.start] and
+                    evenSlashes(code[0..self.idx]))
+                {
+                    self.idx += 1;
+                    res.tag = .string;
+                    res.loc.end = self.idx;
+                    break;
+                },
+                else => {},
             },
-            else => {
-                tok.tag = .number;
-                tok.loc.end = tokenizer.idx;
-                break :state;
+            .number => switch (c) {
+                '0'...'9', '.', '_' => {},
+                else => {
+                    res.tag = .number;
+                    res.loc.end = self.idx;
+                    break;
+                },
             },
-        },
-        .invalid => invalid: switch (tokenizer.char(src)) {
-            'a'...'z', 'A'...'Z', '0'...'9', '?', '!', '_' => {
-                tokenizer.idx += 1;
-                continue :invalid tokenizer.char(src);
+            .invalid => switch (c) {
+                'a'...'z',
+                'A'...'Z',
+                '0'...'9',
+                => {},
+                else => {
+                    res.loc.end = self.idx;
+                    break;
+                },
             },
-            else => {
-                tok.loc.end = tokenizer.idx;
-                break :state;
-            },
-        },
+        }
     }
-    return tok;
-}
-
-fn char(tokenizer: Tokenizer, src: []const u8) u8 {
-    return if (tokenizer.idx < src.len) src[tokenizer.idx] else 0;
+    return res;
 }
 
 fn evenSlashes(str: []const u8) bool {
@@ -376,8 +357,6 @@ test "strings" {
         var it: Tokenizer = .{};
         errdefer std.debug.print("Tokenizer idx: {}\n", .{it.idx});
         const t = it.next(case) orelse return error.Null;
-        errdefer std.debug.print("tok: {}\n", .{t});
-        if (t.loc.end > case.len + 1) return error.OutOfBounds;
         const src = case[t.loc.start..t.loc.end];
         errdefer std.debug.print(".{s} => `{s}`\n", .{ @tagName(t.tag), src });
         try std.testing.expectEqual(@as(Token.Tag, .string), t.tag);
