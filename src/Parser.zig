@@ -1,6 +1,7 @@
 const Parser = @This();
 
 const std = @import("std");
+const assert = std.debug.assert;
 const Tokenizer = @import("Tokenizer.zig");
 
 it: Tokenizer = .{},
@@ -34,7 +35,32 @@ pub const Node = struct {
         false,
         string,
         number,
-        syntax_error,
+        // do not put errors above this line
+        // first error must be err_token
+        err_invalid_token,
+        err_unexpected_token,
+        err_missing_dollar,
+        err_not_identifier,
+        err_not_callable,
+        err_outside_call,
+        err_truncated,
+
+        pub fn isError(t: Tag) bool {
+            return @intFromEnum(t) >= @intFromEnum(Tag.err_invalid_token);
+        }
+
+        pub fn errorMessage(t: Tag) []const u8 {
+            return switch (t) {
+                else => unreachable,
+                .err_invalid_token => "invalid token",
+                .err_unexpected_token => "unexpected token",
+                .err_missing_dollar => "missing dollar sign",
+                .err_not_identifier => "expected identifier",
+                .err_not_callable => "not callable",
+                .err_outside_call => "outside of function call",
+                .err_truncated => "truncated expression",
+            };
+        }
     };
 };
 
@@ -43,7 +69,7 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
         const in_terminal_state = (p.state == .after_call or
             p.state == .extend_path);
         if (in_terminal_state) return null;
-        return p.syntaxError(.{
+        return p.syntaxError(.err_truncated, .{
             .start = p.it.idx,
             .end = p.it.idx,
         });
@@ -64,7 +90,7 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 path.loc = tok.loc;
             },
             else => {
-                return p.syntaxError(tok.loc);
+                return p.syntaxError(.err_missing_dollar, tok.loc);
             },
         },
         .global => switch (tok.tag) {
@@ -73,13 +99,17 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 path.loc.end = tok.loc.end;
                 path_starts_at_global = true;
             },
-            else => return p.syntaxError(tok.loc),
+            else => return p.syntaxError(.err_not_identifier, tok.loc),
         },
         .extend_path => switch (tok.tag) {
             .dot => {
                 const id_tok = p.it.next(code);
                 if (id_tok == null or id_tok.?.tag != .identifier) {
-                    return p.syntaxError(tok.loc);
+                    const code_len: u32 = @intCast(code.len);
+                    return p.syntaxError(.err_not_identifier, if (id_tok) |t| t.loc else .{
+                        .start = code_len - 1,
+                        .end = code_len,
+                    });
                 }
 
                 // we can also get here from 'after call', eg:
@@ -94,7 +124,7 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
             },
             .lparen => {
                 if (path_starts_at_global and !dotted_path) {
-                    return p.syntaxError(tok.loc);
+                    return p.syntaxError(.err_not_callable, tok.loc);
                 }
 
                 // rewind to get a a lparen
@@ -118,11 +148,11 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
             .comma => {
                 p.state = .call_arg;
                 if (p.call_depth == 0) {
-                    return p.syntaxError(tok.loc);
+                    return p.syntaxError(.err_outside_call, tok.loc);
                 }
                 return path;
             },
-            else => return p.syntaxError(tok.loc),
+            else => return p.syntaxError(.err_unexpected_token, tok.loc),
         },
         .call_begin => {
             p.call_depth += 1;
@@ -158,7 +188,7 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 } else if (std.mem.eql(u8, "false", src)) {
                     return .{ .tag = .false, .loc = tok.loc };
                 } else {
-                    return p.syntaxError(tok.loc);
+                    return p.syntaxError(.err_unexpected_token, tok.loc);
                 }
             },
             .string => {
@@ -169,7 +199,7 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 p.state = .extend_call;
                 return .{ .tag = .number, .loc = tok.loc };
             },
-            else => return p.syntaxError(tok.loc),
+            else => return p.syntaxError(.err_unexpected_token, tok.loc),
         },
         .extend_call => switch (tok.tag) {
             .comma => p.state = .call_arg,
@@ -178,11 +208,11 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 p.it.idx -= 1;
                 p.state = .call_end;
             },
-            else => return p.syntaxError(tok.loc),
+            else => return p.syntaxError(.err_unexpected_token, tok.loc),
         },
         .call_end => {
             if (p.call_depth == 0) {
-                return p.syntaxError(tok.loc);
+                return p.syntaxError(.err_outside_call, tok.loc);
             }
             p.call_depth -= 1;
             p.state = .after_call;
@@ -192,7 +222,11 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
             .dot => {
                 const id_tok = p.it.next(code);
                 if (id_tok == null or id_tok.?.tag != .identifier) {
-                    return p.syntaxError(tok.loc);
+                    const code_len: u32 = @intCast(code.len);
+                    return p.syntaxError(.err_not_identifier, if (id_tok) |t| t.loc else .{
+                        .start = code_len - 1,
+                        .end = code_len,
+                    });
                 }
 
                 p.state = .extend_path;
@@ -207,7 +241,7 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
                 p.it.idx -= 1;
                 p.state = .call_end;
             },
-            else => return p.syntaxError(tok.loc),
+            else => return p.syntaxError(.err_unexpected_token, tok.loc),
         },
     };
 
@@ -216,7 +250,7 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
 
     const code_len: u32 = @intCast(code.len);
     if (p.call_depth > 0 or !in_terminal_state) {
-        return p.syntaxError(.{
+        return p.syntaxError(.err_truncated, .{
             .start = code_len - 1,
             .end = code_len,
         });
@@ -227,9 +261,10 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
     return path;
 }
 
-fn syntaxError(p: *Parser, loc: Tokenizer.Token.Loc) Node {
+fn syntaxError(p: *Parser, err: Node.Tag, loc: Tokenizer.Token.Loc) Node {
+    assert(err.isError());
     p.state = .syntax;
-    return .{ .tag = .syntax_error, .loc = loc };
+    return .{ .tag = err, .loc = loc };
 }
 
 test "basics" {

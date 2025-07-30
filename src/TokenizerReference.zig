@@ -1,3 +1,6 @@
+//! Reference tokenizer implemented before labeled switches, kept around to
+//! fuzztest the new implementation.
+
 const Tokenizer = @This();
 
 const std = @import("std");

@@ -122,11 +122,18 @@ pub fn VM(
                     node,
                 });
                 switch (node.tag) {
-                    .syntax_error => {
+                    .err_invalid_token,
+                    .err_unexpected_token,
+                    .err_missing_dollar,
+                    .err_not_identifier,
+                    .err_not_callable,
+                    .err_outside_call,
+                    .err_truncated,
+                    => {
                         vm.reset();
                         return .{
                             .loc = node.loc,
-                            .value = .{ .err = "syntax error" },
+                            .value = .{ .err = node.tag.errorMessage() },
                         };
                     },
                     .string => try vm.stack.append(gpa, .{

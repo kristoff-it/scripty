@@ -101,6 +101,7 @@ pub fn next(tokenizer: *Tokenizer, src: []const u8) ?Token {
             .end = undefined,
         },
     };
+
     state: switch (State.start) {
         .start => start: switch (tokenizer.char(src)) {
             else => continue :state .invalid,
