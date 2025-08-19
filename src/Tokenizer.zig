@@ -35,7 +35,7 @@ pub const Token = struct {
             }
 
             const quote = s[0];
-            var out = std.ArrayList(u8).init(gpa);
+            var out: std.ArrayList(u8) = try .initCapacity(gpa, quoteless.len);
             var last = quote;
             var skipped = false;
             for (quoteless) |c| {
@@ -49,11 +49,11 @@ pub const Token = struct {
                     last = c;
                     continue;
                 }
-                try out.append(c);
+                out.appendAssumeCapacity(c);
                 skipped = false;
                 last = c;
             }
-            return try out.toOwnedSlice();
+            return try out.toOwnedSlice(gpa);
         }
     };
 
