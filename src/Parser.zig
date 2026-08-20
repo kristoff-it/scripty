@@ -261,6 +261,11 @@ pub fn next(p: *Parser, code: []const u8) ?Node {
         });
     }
 
+    // A completed call has no pending path. We normally return above when
+    // next() begins at EOF, but trailing whitespace can make the tokenizer
+    // reach EOF within this invocation instead.
+    if (p.state == .after_call) return null;
+
     path.loc.end = code_len;
     if (path.loc.len() == 0) return null;
     return path;
@@ -328,6 +333,25 @@ test "method chain" {
         try std.testing.expectEqual(ex, p.next(case).?.tag);
     }
     try std.testing.expectEqual(@as(?Node, null), p.next(case));
+}
+
+test "trailing whitespace after completed call" {
+    const cases: []const []const u8 = &.{
+        "$page.call() ",
+        "$page.call()\n",
+        "$page.call()\r\n\t ",
+        "$page.has($page.call())\n",
+    };
+
+    for (cases) |case| {
+        var p: Parser = .{};
+        var last: ?Node = null;
+        while (p.next(case)) |node| {
+            try std.testing.expect(!node.tag.isError());
+            last = node;
+        }
+        try std.testing.expectEqual(Node.Tag.apply, last.?.tag);
+    }
 }
 
 test "dot after call" {
